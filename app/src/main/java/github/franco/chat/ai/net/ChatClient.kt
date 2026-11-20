@@ -36,10 +36,18 @@ data class ChatRequest(
 
 class ChatClient {
 
+    companion object {
+        const val SLOW_TIMEOUT_SECONDS = 900L
+    }
+
+    // En conexiones lentas (datos moviles flojos) no queremos cortar la peticion.
+    // 900 s para conectar/escribir; la lectura no expira porque el modelo puede tardar.
     private val http = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(SLOW_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .writeTimeout(SLOW_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(0, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
