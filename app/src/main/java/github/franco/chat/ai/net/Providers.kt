@@ -7,13 +7,16 @@ data class ProviderPreset(
     val defaultModel: String,
     val keyHint: String,
     val requiresKey: Boolean = true,
-    val omitTemperature: Boolean = false
+    val supportsTemperature: Boolean = true
 )
 
 object Providers {
     val all: List<ProviderPreset> = listOf(
         ProviderPreset("openai", "OpenAI", "https://api.openai.com/v1", "gpt-4o-mini", "sk-..."),
-        ProviderPreset("anthropic", "Claude", "https://api.anthropic.com/v1", "claude-sonnet-4-5", "sk-ant-...", omitTemperature = true),
+        ProviderPreset(
+            "anthropic", "Claude", "https://api.anthropic.com/v1", "claude-sonnet-4-5", "sk-ant-...",
+            supportsTemperature = false
+        ),
         ProviderPreset("gemini", "Gemini", "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.5-flash", "AIza..."),
         ProviderPreset("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", "openai/gpt-4o-mini", "sk-or-..."),
         ProviderPreset("groq", "Groq", "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile", "gsk_..."),
