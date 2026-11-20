@@ -15,8 +15,8 @@ import java.util.concurrent.TimeUnit
 class ModelsClient {
 
     private val http = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(ChatClient.SLOW_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
         .build()
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
