@@ -12,6 +12,8 @@
 
 # ---- OkHttp / Okio ----
 -dontwarn okhttp3.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.openjsse.**
 -dontwarn okio.**
 -dontwarn org.conscrypt.**
 
