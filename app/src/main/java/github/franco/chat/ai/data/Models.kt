@@ -9,23 +9,33 @@ data class Message(
 )
 
 @Serializable
+data class ChatConfig(
+    val providerId: String = "",
+    val model: String = "",
+    val temperature: Double? = null,
+    val systemPrompt: String = ""
+)
+
+@Serializable
 data class Chat(
     val id: String,
     val title: String = "Nuevo chat",
     val messages: List<Message> = emptyList(),
-    val updatedAt: Long = 0L
+    val updatedAt: Long = 0L,
+    val config: ChatConfig = ChatConfig()
 )
 
 @Serializable
-data class ProviderConfig(
-    val presetId: String = "openai",
+data class ProviderAccount(
+    val presetId: String,
     val baseUrl: String = "",
-    val model: String = "",
-    val systemPrompt: String = "",
-    val temperature: Double? = null
+    val models: List<String> = emptyList(),
+    val enabled: Boolean = false
 )
 
 @Serializable
 data class AppSettings(
-    val config: ProviderConfig = ProviderConfig()
+    val accounts: List<ProviderAccount> = emptyList(),
+    val lastProviderId: String = "",
+    val lastModel: String = ""
 )
