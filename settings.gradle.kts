@@ -21,3 +21,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Chat-Lobi-Ai"
+include(":app")
