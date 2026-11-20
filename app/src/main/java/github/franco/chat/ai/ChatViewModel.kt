@@ -133,8 +133,10 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
         _state.update { it.copy(current = updated) }
         viewModelScope.launch {
             repository.saveSettings(
-                repository.settingsFlow.let { it } .let { _ -> _state.value.settings }
-                    .copy(lastProviderId = option.providerId, lastModel = option.model)
+                _state.value.settings.copy(
+                    lastProviderId = option.providerId,
+                    lastModel = option.model
+                )
             )
             if (updated.messages.isNotEmpty()) repository.upsertChat(updated)
         }
