@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -20,10 +21,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
@@ -57,7 +62,9 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import github.franco.chat.ai.ChatViewModel
+import github.franco.chat.ai.ModelOption
 import github.franco.chat.ai.UiState
+import github.franco.chat.ai.data.Chat
 import github.franco.chat.ai.data.Message
 import kotlinx.coroutines.launch
 
@@ -68,12 +75,16 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+
     var input by rememberSaveable { mutableStateOf("") }
+    var showChatConfig by remember { mutableStateOf(false) }
 
     val messageCount = state.current?.messages?.size ?: 0
     LaunchedEffect(messageCount) {
         if (messageCount > 0) listState.scrollToItem(messageCount - 1)
     }
+
+    val chat = state.current
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         ModalNavigationDrawer(
@@ -104,26 +115,35 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                 Scaffold(
                     topBar = {
-                        TopAppBar(
-                            title = {
-                                Text(
-                                    text = state.current?.title ?: "Chat-Lobi-Ai",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            },
-                            actions = {
-                                IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Menu,
-                                        contentDescription = "Historial de chats"
+                        Column {
+                            TopAppBar(
+                                title = {
+                                    Text(
+                                        text = chat?.title ?: "Chat-Lobi-Ai",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
-                                }
-                            },
-                            colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = MaterialTheme.colorScheme.background
+                                },
+                                actions = {
+                                    IconButton(onClick = { showChatConfig = true }) {
+                                        Icon(Icons.Filled.Build, contentDescription = "Ajustes del chat")
+                                    }
+                                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                        Icon(Icons.Filled.Menu, contentDescription = "Historial de chats")
+                                    }
+                                },
+                                colors = TopAppBarDefaults.topAppBarColors(
+                                    containerColor = MaterialTheme.colorScheme.background
+                                )
                             )
-                        )
+                            ModelSelectorBar(
+                                options = state.modelOptions,
+                                active = state.active,
+                                onSelect = { viewModel.selectModel(it) },
+                                onConfigure = { showChatConfig = true }
+                            )
+                            HorizontalDivider()
+                        }
                     },
                     bottomBar = {
                         ComposerBar(
@@ -154,7 +174,7 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
                             }
                         }
 
-                        val messages = state.current?.messages.orEmpty()
+                        val messages = chat?.messages.orEmpty()
                         if (messages.isEmpty()) {
                             EmptyState(modifier = Modifier.fillMaxSize())
                         } else {
@@ -169,6 +189,65 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    if (showChatConfig && chat != null) {
+        ChatConfigSheet(
+            chat = chat,
+            options = state.modelOptions,
+            onDismiss = { showChatConfig = false },
+            onSave = { config -> viewModel.updateChatConfig(config) }
+        )
+    }
+}
+
+@Composable
+private fun ModelSelectorBar(
+    options: List<ModelOption>,
+    active: ModelOption?,
+    onSelect: (ModelOption) -> Unit,
+    onConfigure: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { expanded = true }
+            .padding(start = 16.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = active?.let { "${it.providerLabel} - ${it.model}" } ?: "Sin modelo conectado",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        IconButton(onClick = onConfigure) {
+            Icon(Icons.Filled.Build, contentDescription = "Ajustes del chat", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            if (options.isEmpty()) {
+                DropdownMenuItem(
+                    text = { Text("Conecta un proveedor en Ajustes") },
+                    onClick = { expanded = false }
+                )
+            }
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text("${option.providerLabel} - ${option.model}") },
+                    onClick = {
+                        expanded = false
+                        onSelect(option)
+                    }
+                )
             }
         }
     }
@@ -206,13 +285,10 @@ private fun EmptyState(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = "Chat-Lobi-Ai",
-            style = MaterialTheme.typography.headlineMedium
-        )
+        Text(text = "Chat-Lobi-Ai", style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Configura tu proveedor y pega tu API key en Ajustes.",
+            text = "Conecta un proveedor y elige un modelo arriba.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -230,6 +306,7 @@ private fun ComposerBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .imePadding()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.Bottom
@@ -248,10 +325,7 @@ private fun ComposerBar(
                 enabled = enabled && value.isNotBlank(),
                 modifier = Modifier.padding(bottom = 4.dp)
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Enviar"
-                )
+                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar")
             }
         }
     }
@@ -289,15 +363,26 @@ private fun HistoryDrawer(
                         .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = chat.title.ifBlank { "Sin titulo" },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (chat.id == state.current?.id) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f)
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = chat.title.ifBlank { "Sin titulo" },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (chat.id == state.current?.id) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface
+                        )
+                        val model = chat.config.model.ifBlank { state.settings.lastModel }
+                        if (model.isNotBlank()) {
+                            Text(
+                                text = model,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                     IconButton(onClick = { onDelete(chat.id) }) {
                         Icon(
                             imageVector = Icons.Filled.Delete,
