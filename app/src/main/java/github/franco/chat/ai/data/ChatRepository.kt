@@ -1,6 +1,8 @@
 package github.franco.chat.ai.data
 
 import android.content.Context
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -15,8 +17,6 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 
 private val Context.dataStore by preferencesDataStore(name = "chat_lobi")
 
@@ -25,11 +25,11 @@ object KeyVault {
     private const val IV_LEN = 12
 
     private fun secretKey(): SecretKey {
-        val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        val existing = ks.getEntry(ALIAS, null) as? KeyStore.SecretKeyEntry
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val existing = keyStore.getEntry(ALIAS, null) as? KeyStore.SecretKeyEntry
         if (existing != null) return existing.secretKey
-        val gen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
-        gen.init(
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        generator.init(
             KeyGenParameterSpec.Builder(
                 ALIAS,
                 KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
@@ -38,7 +38,7 @@ object KeyVault {
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .build()
         )
-        return gen.generateKey()
+        return generator.generateKey()
     }
 
     fun encrypt(plain: String): String {
@@ -89,13 +89,20 @@ class ChatRepository(private val context: Context) {
     }
 
     suspend fun upsertChat(chat: Chat) {
-        val current = chatsFlow.first()
-        val next = current.filterNot { it.id == chat.id } + chat
-        saveChats(next)
+        saveChats(chatsFlow.first().filterNot { it.id == chat.id } + chat)
     }
 
     suspend fun deleteChat(id: String) {
         saveChats(chatsFlow.first().filterNot { it.id == id })
+    }
+
+    suspend fun account(presetId: String): ProviderAccount? =
+        settingsFlow.first().accounts.firstOrNull { it.presetId == presetId }
+
+    suspend fun updateAccount(account: ProviderAccount) {
+        val current = settingsFlow.first()
+        val next = current.accounts.filterNot { it.presetId == account.presetId } + account
+        saveSettings(current.copy(accounts = next))
     }
 
     suspend fun saveApiKey(presetId: String, raw: String) {
