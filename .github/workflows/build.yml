@@ -16,6 +16,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Permiso de ejecucion para gradlew
+        run: chmod +x gradlew
+
       - name: JDK 21
         uses: actions/setup-java@v4
         with:
