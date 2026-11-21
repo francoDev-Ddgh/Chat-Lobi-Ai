@@ -8,6 +8,9 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.size
@@ -236,7 +239,10 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
                                     MessageBubble(
                                         message = message,
                                         streaming = state.streaming && index == 0 && message.role == "assistant",
-                                        waitSeconds = waitSeconds
+                                        waitSeconds = waitSeconds,
+                                        busy = state.streaming,
+                                        onRegenerate = { viewModel.regenerate(messages.size - 1 - index) },
+                                        onEdit = { text -> viewModel.editUser(messages.size - 1 - index, text) }
                                     )
                                 }
                             }
@@ -349,9 +355,20 @@ private fun ModelSelectorBar(
 }
 
 @Composable
-private fun MessageBubble(message: Message, streaming: Boolean, waitSeconds: Int) {
+private fun MessageBubble(
+    message: Message,
+    streaming: Boolean,
+    waitSeconds: Int,
+    busy: Boolean,
+    onRegenerate: () -> Unit,
+    onEdit: (String) -> Unit
+) {
     val isUser = message.role == "user"
     val container = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+    var editing by remember { mutableStateOf(false) }
+    var draft by remember { mutableStateOf("") }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -390,6 +407,62 @@ private fun MessageBubble(message: Message, streaming: Boolean, waitSeconds: Int
                 }
             }
         }
+    }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+        ) {
+            if (isUser) {
+                IconButton(
+                    onClick = {
+                        draft = message.content
+                        editing = true
+                    },
+                    enabled = !busy
+                ) {
+                    Icon(Icons.Filled.Edit, contentDescription = "Editar mensaje")
+                }
+            } else if (!streaming) {
+                IconButton(onClick = onRegenerate, enabled = !busy) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "Regenerar respuesta")
+                }
+            }
+        }
+    }
+
+    if (editing) {
+        AlertDialog(
+            onDismissRequest = { editing = false },
+            title = { Text("Editar mensaje") },
+            text = {
+                Column {
+                    Text(
+                        text = "Los mensajes posteriores a este se eliminaran y el modelo no los recordara.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 8
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        editing = false
+                        onEdit(draft)
+                    },
+                    enabled = draft.isNotBlank() || message.attachments.isNotEmpty()
+                ) { Text("Reenviar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editing = false }) { Text("Cancelar") }
+            }
+        )
     }
 }
 
