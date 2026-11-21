@@ -59,11 +59,22 @@ private sealed interface Block {
     data class Heading(val level: Int, val text: String) : Block
     data class Code(val lang: String, val code: String) : Block
     data object Rule : Block
+    data class Table(val header: List<String>, val rows: List<List<String>>) : Block
 }
 
+private val TABLE_SEP = Regex("^\\s*\\|?\\s*:?-+:?\\s*(\\|\\s*:?-+:?\\s*)+\\|?\\s*$")
 private val FENCE = Regex("^\\s{0,3}(`{3,}|~{3,})\\s*([^\\s`]*).*$")
 private val HEADING = Regex("^\\s{0,3}(#{1,6})\\s+(.*)$")
 private val RULE = Regex("^\\s{0,3}([-*_])(\\s*\\1){2,}\\s*$")
+
+private fun splitRow(line: String): List<String> {
+    var t = line.trim()
+    if (t.startsWith("|")) t = t.drop(1)
+    if (t.endsWith("|")) t = t.dropLast(1)
+    return t.split("|").map { it.trim() }
+}
+
+private fun List<String>.padded(n: Int): List<String> = this + List(maxOf(0, n - size)) { "" }
 
 private fun parseBlocks(src: String): List<Block> {
     val lines = src.replace("\r\n", "\n").lines()
@@ -109,6 +120,18 @@ private fun parseBlocks(src: String): List<Block> {
                 i++
                 continue
             }
+        }
+        if (i + 1 < lines.size && line.contains('|') && TABLE_SEP.matches(lines[i + 1])) {
+            flush()
+            val header = splitRow(line)
+            val rows = mutableListOf<List<String>>()
+            i += 2
+            while (i < lines.size && lines[i].isNotBlank() && lines[i].contains('|')) {
+                rows += splitRow(lines[i])
+                i++
+            }
+            out += Block.Table(header, rows)
+            continue
         }
         if (line.isBlank() && buf.isNotEmpty()) {
             flush()
@@ -238,6 +261,7 @@ fun MessageContent(
                                 else MaterialTheme.typography.titleSmall,
                                 color = textColor
                             )
+                            is Block.Table -> TableBlock(block.header, block.rows, textColor, codeBg, linkColor)
                             is Block.Rule -> HorizontalDivider(
                                 color = textColor.copy(alpha = 0.15f)
                             )
@@ -394,4 +418,50 @@ private fun CodeBlock(lang: String, code: String, isUser: Boolean) {
 private fun copyToClipboard(context: Context, text: String) {
     val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
     manager.setPrimaryClip(ClipData.newPlainText("código", text))
+}
+
+@Composable
+private fun TableBlock(
+    header: List<String>,
+    rows: List<List<String>>,
+    textColor: Color,
+    codeBg: Color,
+    linkColor: Color
+) {
+    val cols = maxOf(header.size, rows.maxOfOrNull { it.size } ?: 0).coerceAtLeast(1)
+    val border = textColor.copy(alpha = 0.2f)
+    Column(
+        modifier = Modifier
+            .horizontalScroll(rememberScrollState())
+            .border(1.dp, border, RoundedCornerShape(6.dp))
+    ) {
+        TableRowView(header.padded(cols), true, textColor, codeBg, linkColor)
+        rows.forEach { row ->
+            HorizontalDivider(color = border)
+            TableRowView(row.padded(cols), false, textColor, codeBg, linkColor)
+        }
+    }
+}
+
+@Composable
+private fun TableRowView(
+    cells: List<String>,
+    header: Boolean,
+    textColor: Color,
+    codeBg: Color,
+    linkColor: Color
+) {
+    Row {
+        cells.forEach { cell ->
+            Text(
+                text = inlineMarkdown(cell, textColor, codeBg, linkColor),
+                modifier = Modifier
+                    .width(150.dp)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (header) FontWeight.Bold else null,
+                color = textColor
+            )
+        }
+    }
 }
