@@ -1,6 +1,21 @@
 package github.franco.chat.ai.ui
 
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
+import android.util.Base64
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.AssistChip
+import androidx.compose.ui.platform.LocalContext
+import github.franco.chat.ai.data.Attachment
+import github.franco.chat.ai.text.ModelCapabilities
+import github.franco.chat.ai.text.ModelCaps
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -84,6 +99,17 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
     var input by rememberSaveable { mutableStateOf("") }
     var showChatConfig by remember { mutableStateOf(false) }
     var waitSeconds by remember { mutableStateOf(0) }
+    val context = LocalContext.current
+    var pending by remember { mutableStateOf<List<Attachment>>(emptyList()) }
+    val activeModel = state.active?.model.orEmpty()
+    val caps = remember(activeModel) { ModelCapabilities.of(activeModel) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            readAttachment(context, uri)
+                .onSuccess { pending = pending + it }
+                .onFailure { Toast.makeText(context, it.message ?: "No se pudo adjuntar", Toast.LENGTH_SHORT).show() }
+        }
+    }
 
     val chat = state.current
     val messages = chat?.messages.orEmpty()
@@ -170,10 +196,16 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
                             value = input,
                             onValueChange = { input = it },
                             streaming = state.streaming,
+                            pending = pending,
+                            caps = caps,
+                            onPick = { kind -> picker.launch(mimeFor(kind)) },
+                            onRemovePending = { index -> pending = pending.filterIndexed { i, _ -> i != index } },
                             onSend = {
                                 val text = input
+                                val toSend = pending
                                 input = ""
-                                viewModel.send(text)
+                                pending = emptyList()
+                                viewModel.send(text, toSend)
                             },
                             onStop = { viewModel.stop() }
                         )
@@ -332,11 +364,22 @@ private fun MessageBubble(message: Message, streaming: Boolean, waitSeconds: Int
         ) {
             Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                 if (isUser) {
-                    Text(
-                        text = message.content,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
+                    Column {
+                        message.attachments.forEach { attachment ->
+                            Text(
+                                text = "Adjunto: ${attachment.name}",
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                        if (message.content.isNotBlank()) {
+                            Text(
+                                text = message.content,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                    }
                 } else {
                     MessageContent(
                         raw = message.content,
@@ -372,40 +415,118 @@ private fun ComposerBar(
     value: String,
     onValueChange: (String) -> Unit,
     streaming: Boolean,
+    pending: List<Attachment>,
+    caps: ModelCaps,
+    onPick: (String) -> Unit,
+    onRemovePending: (Int) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
     Surface(color = MaterialTheme.colorScheme.background) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .imePadding()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.Bottom
+                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
-            OutlinedTextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Escribe un mensaje") },
-                maxLines = 5,
-                enabled = !streaming,
-                shape = RoundedCornerShape(24.dp)
-            )
-            Spacer(Modifier.width(8.dp))
-            FilledIconButton(
-                onClick = if (streaming) onStop else onSend,
-                enabled = if (streaming) true else value.isNotBlank(),
-                modifier = Modifier.padding(bottom = 4.dp)
-            ) {
-                if (streaming) {
-                    Icon(Icons.Filled.Close, contentDescription = "Detener")
-                } else {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar")
+            if (pending.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    pending.forEachIndexed { index, item ->
+                        AssistChip(
+                            onClick = { onRemovePending(index) },
+                            label = { Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            trailingIcon = {
+                                Icon(
+                                    Icons.Filled.Close,
+                                    contentDescription = "Quitar",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        )
+                        Spacer(Modifier.width(6.dp))
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+            Row(verticalAlignment = Alignment.Bottom) {
+                Box {
+                    IconButton(onClick = { menuOpen = true }, enabled = !streaming) {
+                        Icon(Icons.Filled.Add, contentDescription = "Adjuntar")
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        if (caps.image) {
+                            DropdownMenuItem(text = { Text("Imagen") }, onClick = { menuOpen = false; onPick("image") })
+                        }
+                        if (caps.audio) {
+                            DropdownMenuItem(text = { Text("Audio") }, onClick = { menuOpen = false; onPick("audio") })
+                        }
+                        DropdownMenuItem(text = { Text("Archivo de texto") }, onClick = { menuOpen = false; onPick("text") })
+                    }
+                }
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Escribe un mensaje") },
+                    maxLines = 5,
+                    enabled = !streaming,
+                    shape = RoundedCornerShape(24.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                FilledIconButton(
+                    onClick = if (streaming) onStop else onSend,
+                    enabled = if (streaming) true else value.isNotBlank() || pending.isNotEmpty(),
+                    modifier = Modifier.padding(bottom = 4.dp)
+                ) {
+                    if (streaming) {
+                        Icon(Icons.Filled.Close, contentDescription = "Detener")
+                    } else {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar")
+                    }
                 }
             }
         }
+    }
+}
+
+private fun mimeFor(kind: String): String = when (kind) {
+    "image" -> "image/*"
+    "audio" -> "audio/*"
+    else -> "*/*"
+}
+
+private const val MAX_MEDIA_BYTES = 5 * 1024 * 1024
+private const val MAX_TEXT_BYTES = 200 * 1024
+private val TEXT_EXTENSIONS = setOf(
+    "txt", "md", "kt", "java", "json", "xml", "py", "js", "ts", "csv", "log",
+    "html", "css", "yaml", "yml", "gradle", "kts", "sh", "c", "cpp", "h", "go", "rs"
+)
+
+private fun readAttachment(context: Context, uri: Uri): Result<Attachment> = runCatching {
+    val resolver = context.contentResolver
+    val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) cursor.getString(0) else null
+    } ?: "archivo"
+    val rawMime = resolver.getType(uri).orEmpty()
+    val ext = name.substringAfterLast('.', "").lowercase()
+    val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: error("No se pudo leer el archivo")
+    when {
+        rawMime.startsWith("image/") || rawMime.startsWith("audio/") -> {
+            require(bytes.size <= MAX_MEDIA_BYTES) { "Archivo demasiado grande (maximo 5 MB)" }
+            Attachment(name, rawMime, Base64.encodeToString(bytes, Base64.NO_WRAP))
+        }
+        rawMime.startsWith("text/") || ext in TEXT_EXTENSIONS -> {
+            require(bytes.size <= MAX_TEXT_BYTES) { "Archivo de texto demasiado grande (maximo 200 KB)" }
+            Attachment(name, "text/plain", String(bytes, Charsets.UTF_8))
+        }
+        else -> error("Tipo de archivo no compatible con este modelo")
     }
 }
 
