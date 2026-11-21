@@ -264,10 +264,15 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
             val anthropicStyle = account.apiType == ApiTypes.ANTHROPIC
             runCatching {
                 modelsClient.fetch(account.baseUrl, key, anthropicStyle)
-            }.onSuccess { models ->
+            }.onSuccess { listing ->
+                val models = listing.ids
                 val current = repository.account(id) ?: return@onSuccess
                 repository.updateAccount(
-                    current.copy(models = (current.models + models).distinct().sorted())
+                    current.copy(
+                        models = (current.models + models).distinct().sorted(),
+                        reasoningModels = listing.reasoning,
+                        metaModels = listing.withMeta
+                    )
                 )
                 if (models.isEmpty()) {
                     _state.update { it.copy(error = "El proveedor no devolvio modelos. Agrega uno manualmente.") }
