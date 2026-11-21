@@ -197,6 +197,7 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
         ChatConfigSheet(
             chat = chat,
             options = state.modelOptions,
+            accounts = state.accounts,
             onDismiss = { showChatConfig = false },
             onSave = { config -> viewModel.updateChatConfig(config) }
         )
