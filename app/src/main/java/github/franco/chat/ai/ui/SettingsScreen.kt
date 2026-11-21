@@ -78,7 +78,7 @@ fun SettingsScreen(
             )
             HorizontalDivider()
             Text(
-                text = "Chat-Lobi-Ai - 1.2.0",
+                text = "Chat-Lobi-Ai - 1.3.0",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(20.dp)
