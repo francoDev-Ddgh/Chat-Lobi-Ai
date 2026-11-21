@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.Button
 import github.franco.chat.ai.data.Chat
 import androidx.compose.foundation.horizontalScroll
@@ -158,6 +159,10 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
                             scope.launch { drawerState.close() }
                         },
                         onDelete = { id -> viewModel.deleteChat(id) },
+                        onOpenChatConfig = {
+                            scope.launch { drawerState.close() }
+                            showChatConfig = true
+                        },
                         onOpenSettings = {
                             scope.launch { drawerState.close() }
                             onOpenSettings()
@@ -713,6 +718,7 @@ private fun HistoryDrawer(
     onNewChat: () -> Unit,
     onSelect: (String) -> Unit,
     onDelete: (String) -> Unit,
+    onOpenChatConfig: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
@@ -723,15 +729,60 @@ private fun HistoryDrawer(
             .sortedByDescending { it.updatedAt }
     }
     val groups = remember(chats, now) { chats.groupBy { groupLabel(now - it.updatedAt) } }
+    val customChats = remember(state.chats) {
+        state.chats
+            .filter { it.config.systemPrompt.isNotBlank() || it.config.temperature != null }
+            .sortedByDescending { it.updatedAt }
+            .take(3)
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(vertical = 16.dp)) {
-        Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+        Text(
+            text = "Chat-Lobi-Ai",
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(horizontal = 20.dp)
+        )
+
+        Spacer(Modifier.height(16.dp))
+        DrawerSectionLabel("Chats personalizados")
+        if (customChats.isEmpty()) {
             Text(
-                text = "Chat-Lobi-Ai",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface
+                text = "Cambia el prompt de sistema o la temperatura de un chat y aparecerá aquí.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
             )
-            Spacer(Modifier.height(16.dp))
+        } else {
+            customChats.forEach { chat ->
+                Box(modifier = Modifier.padding(horizontal = 12.dp)) {
+                    ChatRow(
+                        chat = chat,
+                        selected = chat.id == state.current?.id,
+                        fallbackModel = state.settings.lastModel,
+                        onSelect = onSelect,
+                        onDelete = onDelete
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        DrawerSectionLabel("Personalización")
+        DrawerLink(
+            icon = Icons.Filled.Build,
+            label = "Ajustes de este chat",
+            onClick = onOpenChatConfig
+        )
+
+        Spacer(Modifier.height(12.dp))
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+            modifier = Modifier.padding(horizontal = 20.dp)
+        )
+        Spacer(Modifier.height(12.dp))
+
+        Column(modifier = Modifier.padding(horizontal = 20.dp)) {
             Button(
                 onClick = onNewChat,
                 modifier = Modifier.fillMaxWidth(),
@@ -741,7 +792,7 @@ private fun HistoryDrawer(
                 Spacer(Modifier.width(8.dp))
                 Text("Nuevo chat")
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
@@ -801,25 +852,44 @@ private fun HistoryDrawer(
             color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
         )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onOpenSettings() }
-                .padding(horizontal = 24.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                Icons.Filled.Settings,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.width(12.dp))
-            Text(
-                text = "Ajustes",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
+        DrawerLink(
+            icon = Icons.Filled.Settings,
+            label = "Ajustes",
+            onClick = onOpenSettings
+        )
+    }
+}
+
+@Composable
+private fun DrawerSectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+    )
+}
+
+@Composable
+private fun DrawerLink(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 
