@@ -80,40 +80,46 @@ class ChatRepository(private val context: Context) {
         } ?: AppSettings()
     }
 
-    suspend fun saveChats(chats: List<Chat>) {
-        context.dataStore.edit { it[chatsKey] = json.encodeToString(chats) }
-    }
-
     suspend fun saveSettings(settings: AppSettings) {
         context.dataStore.edit { it[settingsKey] = json.encodeToString(settings) }
     }
 
     suspend fun upsertChat(chat: Chat) {
-        saveChats(chatsFlow.first().filterNot { it.id == chat.id } + chat)
-    }
-
-    suspend fun deleteChat(id: String) {
-        saveChats(chatsFlow.first().filterNot { it.id == id })
-    }
-
-    suspend fun account(presetId: String): ProviderAccount? =
-        settingsFlow.first().accounts.firstOrNull { it.presetId == presetId }
-
-    suspend fun updateAccount(account: ProviderAccount) {
-        val current = settingsFlow.first()
-        val next = current.accounts.filterNot { it.presetId == account.presetId } + account
-        saveSettings(current.copy(accounts = next))
-    }
-
-    suspend fun saveApiKey(presetId: String, raw: String) {
-        context.dataStore.edit { prefs ->
-            if (raw.isBlank()) prefs.remove(keyPref(presetId))
-            else prefs[keyPref(presetId)] = KeyVault.encrypt(raw.trim())
+        val current = chatsFlow.first()
+        context.dataStore.edit {
+            it[chatsKey] = json.encodeToString(current.filterNot { c -> c.id == chat.id } + chat)
         }
     }
 
-    suspend fun apiKey(presetId: String): String? {
-        val stored = context.dataStore.data.first()[keyPref(presetId)] ?: return null
+    suspend fun deleteChat(id: String) {
+        val current = chatsFlow.first()
+        context.dataStore.edit { it[chatsKey] = json.encodeToString(current.filterNot { c -> c.id == id }) }
+    }
+
+    suspend fun account(id: String): ProviderAccount? =
+        settingsFlow.first().accounts.firstOrNull { it.id == id }
+
+    suspend fun updateAccount(account: ProviderAccount) {
+        val current = settingsFlow.first()
+        val next = current.accounts.filterNot { it.id == account.id } + account
+        saveSettings(current.copy(accounts = next))
+    }
+
+    suspend fun removeAccount(id: String) {
+        val current = settingsFlow.first()
+        saveSettings(current.copy(accounts = current.accounts.filterNot { it.id == id }))
+        context.dataStore.edit { it.remove(keyPref(id)) }
+    }
+
+    suspend fun saveApiKey(id: String, raw: String) {
+        context.dataStore.edit { prefs ->
+            if (raw.isBlank()) prefs.remove(keyPref(id))
+            else prefs[keyPref(id)] = KeyVault.encrypt(raw.trim())
+        }
+    }
+
+    suspend fun apiKey(id: String): String? {
+        val stored = context.dataStore.data.first()[keyPref(id)] ?: return null
         return KeyVault.decrypt(stored)
     }
 }
