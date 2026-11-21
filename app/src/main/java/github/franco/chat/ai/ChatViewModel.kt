@@ -338,7 +338,7 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
         val history = withUser.messages.map { message ->
             if (message.role == "assistant") {
                 val parsed = Reasoning.split(message.content)
-                message.copy(content = parsed.body.ifBlank { parsed.reasoning })
+                if (parsed.body.isBlank()) message else message.copy(content = parsed.body)
             } else {
                 message
             }
