@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -14,7 +16,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -26,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import github.franco.chat.ai.ModelOption
@@ -60,29 +62,29 @@ fun ChatConfigSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = 22.dp)
                 .navigationBarsPadding()
                 .padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text("Ajustes de este chat", style = MaterialTheme.typography.titleLarge)
             Text(
-                text = "Solo afectan a esta conversacion.",
+                text = "Solo afectan a esta conversación.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             if (providerIds.isEmpty()) {
                 Text(
-                    "No hay proveedores conectados. Ve a Ajustes > Proveedores.",
+                    text = "No hay proveedores conectados. Ve a Ajustes > Proveedores.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error
                 )
             } else {
-                Text("Proveedor", style = MaterialTheme.typography.labelLarge)
+                SheetLabel("Proveedor")
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     providerIds.forEach { id ->
                         val name = accounts.firstOrNull { it.id == id }?.label ?: id
@@ -95,17 +97,17 @@ fun ChatConfigSheet(
                     }
                 }
 
-                Text("Modelo", style = MaterialTheme.typography.labelLarge)
+                SheetLabel("Modelo")
                 if (models.isEmpty()) {
                     Text(
-                        "Este proveedor no tiene modelos. Agregalos en Ajustes > Proveedores.",
+                        text = "Este proveedor no tiene modelos. Agrégalos en Ajustes > Proveedores.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else {
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         models.forEach { model ->
                             FilterChip(
@@ -119,15 +121,14 @@ fun ChatConfigSheet(
                 }
             }
 
-            HorizontalDivider()
-
             val supportsTemperature = account?.supportsTemperature ?: true
             if (supportsTemperature) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("Temperatura", style = MaterialTheme.typography.labelLarge)
+                    SheetLabel("Temperatura")
                     Text(
                         text = config.temperature?.let { String.format("%.1f", it) } ?: "auto",
                         style = MaterialTheme.typography.labelLarge,
@@ -144,21 +145,23 @@ fun ChatConfigSheet(
                 }
             } else {
                 Text(
-                    text = "Este proveedor no acepta temperatura; se omite automaticamente.",
+                    text = "Este proveedor no acepta temperatura; se omite automáticamente.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
+            SheetLabel("Instrucciones del sistema")
             OutlinedTextField(
                 value = config.systemPrompt,
                 onValueChange = { config = config.copy(systemPrompt = it) },
-                label = { Text("System prompt de este chat") },
+                placeholder = { Text("Cómo debe comportarse el modelo en este chat") },
                 minLines = 3,
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(14.dp)
             )
 
+            Spacer(Modifier.height(4.dp))
             Button(
                 onClick = {
                     val fixed = config.copy(
@@ -169,10 +172,19 @@ fun ChatConfigSheet(
                     onDismiss()
                 },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(14.dp)
             ) {
-                Text("Guardar ajustes del chat")
+                Text("Guardar ajustes")
             }
         }
     }
+}
+
+@Composable
+private fun SheetLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurface
+    )
 }
