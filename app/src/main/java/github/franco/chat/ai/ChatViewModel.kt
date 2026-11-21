@@ -433,7 +433,7 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
                 val toolAnswer = client.completeWithTools(request) { status ->
                     updateAssistant(assistantIndex, status)
                 }
-                if (toolAnswer != null) {
+                if (toolAnswer != null && toolAnswer.isNotBlank()) {
                     updateAssistant(assistantIndex, toolAnswer)
                 } else {
                     client.stream(request).collect { delta ->
