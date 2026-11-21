@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   release:
@@ -44,3 +44,15 @@ jobs:
             app/build/outputs/apk/release/*.apk
             app/build/outputs/mapping/release/mapping.txt
           if-no-files-found: error
+
+      - name: Publish APK as GitHub Release
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Chat-Lobi-Ai build ${{ github.run_number }} (sin firmar)
+          body: "APK release sin firmar generado con R8. Para instalarlo hay que firmarlo primero."
+          prerelease: true
+          files: app/build/outputs/apk/release/*.apk
