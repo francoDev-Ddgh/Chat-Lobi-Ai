@@ -8,6 +8,9 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import github.franco.chat.ai.data.AppSettings
 import github.franco.chat.ai.data.Attachment
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import github.franco.chat.ai.data.Chat
 import github.franco.chat.ai.data.ChatConfig
 import github.franco.chat.ai.data.ChatRepository
@@ -312,6 +315,9 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
         _state.update { it.copy(savedKeys = saved) }
     }
 
+    /** Nivel de razonamiento elegido en el chat; null = automatico (no se envia). */
+    var reasoningEffort by mutableStateOf<String?>(null)
+
     fun send(text: String, attachments: List<Attachment> = emptyList()) {
         val snapshot = _state.value
         if ((text.isBlank() && attachments.isEmpty()) || snapshot.streaming) return
@@ -415,7 +421,8 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
                     temperature = withUser.config.temperature,
                     omitTemperature = !account.supportsTemperature,
                     streaming = account.streaming,
-                    apiType = account.apiType
+                    apiType = account.apiType,
+                    reasoningEffort = reasoningEffort
                 )
                 // Tool calling primero; si el proveedor no lo soporta, cae al stream normal.
                 val toolAnswer = client.completeWithTools(request) { status ->
