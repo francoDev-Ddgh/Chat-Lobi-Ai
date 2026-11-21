@@ -334,20 +334,21 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
             title = title,
             updatedAt = System.currentTimeMillis()
         )
-        // Al reenviar el historial quitamos el razonamiento: es ruido y gasta tokens.
-        val history = withUser.messages.map { message ->
+        // El razonamiento solo se quita del payload que va al proveedor; la vista lo conserva.
+        // Los mensajes del asistente sin respuesta visible se omiten para no enviar contenido vacio.
+        val apiMessages = withUser.messages.mapNotNull { message ->
             if (message.role == "assistant") {
-                val parsed = Reasoning.split(message.content)
-                if (parsed.body.isBlank()) message else message.copy(content = parsed.body)
+                val body = Reasoning.split(message.content).body
+                if (body.isBlank()) null else message.copy(content = body)
             } else {
                 message
             }
         }
-        val assistantIndex = history.size
+        val assistantIndex = withUser.messages.size
 
         _state.update {
             it.copy(
-                current = withUser.copy(messages = history + Message("assistant", "")),
+                current = withUser.copy(messages = withUser.messages + Message("assistant", "")),
                 streaming = true,
                 error = null
             )
@@ -368,7 +369,7 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
                         url = account.baseUrl.trimEnd('/') + "/chat/completions",
                         apiKey = apiKey,
                         model = option.model,
-                        messages = history,
+                        messages = apiMessages,
                         system = withUser.config.systemPrompt,
                         temperature = withUser.config.temperature,
                         omitTemperature = !account.supportsTemperature,
