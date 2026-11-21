@@ -8,6 +8,10 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
@@ -389,7 +393,7 @@ private fun MessageBubble(
             shape = RoundedCornerShape(20.dp),
             modifier = if (isUser) Modifier.widthIn(max = 320.dp) else Modifier.fillMaxWidth()
         ) {
-            Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Box(modifier = Modifier.padding(horizontal = if (isUser) 14.dp else 0.dp, vertical = if (isUser) 10.dp else 2.dp)) {
                 if (isUser) {
                     Column {
                         message.attachments.forEach { attachment ->
@@ -483,10 +487,14 @@ private fun EmptyState(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(text = "Chat-Lobi-Ai", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            text = "En que puedo ayudarte?",
+            style = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily.Serif),
+            color = MaterialTheme.colorScheme.onSurface
+        )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Conecta un proveedor y elige un modelo arriba.",
+            text = "Conecta un proveedor y elige un modelo para empezar.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -510,87 +518,99 @@ private fun ComposerBar(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     var effortMenu by remember { mutableStateOf(false) }
-    Surface(color = MaterialTheme.colorScheme.background) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .imePadding()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+    val canSend = value.isNotBlank() || pending.isNotEmpty()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .imePadding()
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
         ) {
-            if (efforts != null) {
-                Box {
-                    AssistChip(
-                        onClick = { effortMenu = true },
-                        label = { Text("Razonamiento: " + effortLabel(effort)) }
-                    )
-                    DropdownMenu(expanded = effortMenu, onDismissRequest = { effortMenu = false }) {
-                        DropdownMenuItem(text = { Text("Automatico") }, onClick = { effortMenu = false; onEffort(null) })
-                        efforts.forEach { option ->
-                            DropdownMenuItem(text = { Text(effortLabel(option)) }, onClick = { effortMenu = false; onEffort(option) })
+            Column(modifier = Modifier.padding(start = 12.dp, end = 10.dp, top = 10.dp, bottom = 8.dp)) {
+                if (pending.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        pending.forEachIndexed { index, item ->
+                            AssistChip(
+                                onClick = { onRemovePending(index) },
+                                label = { Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                trailingIcon = {
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = "Quitar",
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            )
+                            Spacer(Modifier.width(6.dp))
                         }
                     }
-                }
-                Spacer(Modifier.height(6.dp))
-            }
-            if (pending.isNotEmpty()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    pending.forEachIndexed { index, item ->
-                        AssistChip(
-                            onClick = { onRemovePending(index) },
-                            label = { Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            trailingIcon = {
-                                Icon(
-                                    Icons.Filled.Close,
-                                    contentDescription = "Quitar",
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        )
-                        Spacer(Modifier.width(6.dp))
-                    }
-                }
-                Spacer(Modifier.height(6.dp))
-            }
-            Row(verticalAlignment = Alignment.Bottom) {
-                Box {
-                    IconButton(onClick = { menuOpen = true }, enabled = !streaming) {
-                        Icon(Icons.Filled.Add, contentDescription = "Adjuntar")
-                    }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        if (caps.image) {
-                            DropdownMenuItem(text = { Text("Imagen") }, onClick = { menuOpen = false; onPick("image") })
-                        }
-                        if (caps.audio) {
-                            DropdownMenuItem(text = { Text("Audio") }, onClick = { menuOpen = false; onPick("audio") })
-                        }
-                        DropdownMenuItem(text = { Text("Archivo de texto") }, onClick = { menuOpen = false; onPick("text") })
-                    }
+                    Spacer(Modifier.height(4.dp))
                 }
                 OutlinedTextField(
                     value = value,
                     onValueChange = onValueChange,
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Escribe un mensaje") },
-                    maxLines = 5,
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Escribe tu mensaje") },
+                    maxLines = 6,
                     enabled = !streaming,
-                    shape = RoundedCornerShape(24.dp)
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        disabledBorderColor = Color.Transparent
+                    )
                 )
-                Spacer(Modifier.width(8.dp))
-                FilledIconButton(
-                    onClick = if (streaming) onStop else onSend,
-                    enabled = if (streaming) true else value.isNotBlank() || pending.isNotEmpty(),
-                    modifier = Modifier.padding(bottom = 4.dp)
-                ) {
-                    if (streaming) {
-                        Icon(Icons.Filled.Close, contentDescription = "Detener")
-                    } else {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box {
+                        IconButton(onClick = { menuOpen = true }, enabled = !streaming) {
+                            Icon(Icons.Filled.Add, contentDescription = "Adjuntar")
+                        }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            if (caps.image) {
+                                DropdownMenuItem(text = { Text("Imagen") }, onClick = { menuOpen = false; onPick("image") })
+                            }
+                            if (caps.audio) {
+                                DropdownMenuItem(text = { Text("Audio") }, onClick = { menuOpen = false; onPick("audio") })
+                            }
+                            DropdownMenuItem(text = { Text("Archivo de texto") }, onClick = { menuOpen = false; onPick("text") })
+                        }
+                    }
+                    if (efforts != null) {
+                        Box {
+                            AssistChip(
+                                onClick = { effortMenu = true },
+                                label = { Text(effortLabel(effort)) }
+                            )
+                            DropdownMenu(expanded = effortMenu, onDismissRequest = { effortMenu = false }) {
+                                DropdownMenuItem(text = { Text("Automatico") }, onClick = { effortMenu = false; onEffort(null) })
+                                efforts.forEach { option ->
+                                    DropdownMenuItem(text = { Text(effortLabel(option)) }, onClick = { effortMenu = false; onEffort(option) })
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    FilledIconButton(
+                        onClick = if (streaming) onStop else onSend,
+                        enabled = streaming || canSend
+                    ) {
+                        if (streaming) {
+                            Icon(Icons.Filled.Close, contentDescription = "Detener")
+                        } else {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar")
+                        }
                     }
                 }
             }
