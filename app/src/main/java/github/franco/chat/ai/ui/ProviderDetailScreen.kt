@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -31,38 +33,47 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import github.franco.chat.ai.ChatViewModel
-import github.franco.chat.ai.net.Providers
+import github.franco.chat.ai.net.ApiTypes
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ProviderDetailScreen(
     viewModel: ChatViewModel,
-    presetId: String,
+    providerId: String,
     onBack: () -> Unit
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val preset = Providers.byId(presetId)
-    val account = state.settings.accounts.firstOrNull { it.presetId == presetId }
-    val hasKey = state.savedKeys.contains(presetId)
+    val account = state.settings.accounts.firstOrNull { it.id == providerId }
 
-    var key by remember(presetId) { mutableStateOf("") }
-    var baseUrl by remember(presetId, account?.baseUrl) { mutableStateOf(account?.baseUrl.orEmpty()) }
-    var manualModel by remember(presetId) { mutableStateOf("") }
+    if (account == null) {
+        LaunchedEffect(providerId) { onBack() }
+        return
+    }
+
+    val hasKey = state.savedKeys.contains(providerId)
+
+    var label by remember(providerId, account.label) { mutableStateOf(account.label) }
+    var baseUrl by remember(providerId, account.baseUrl) { mutableStateOf(account.baseUrl) }
+    var apiType by remember(providerId, account.apiType) { mutableStateOf(account.apiType) }
+    var key by remember(providerId) { mutableStateOf("") }
+    var manualModel by remember(providerId) { mutableStateOf("") }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(preset.label) },
+                title = { Text(account.label) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
@@ -82,14 +93,61 @@ fun ProviderDetailScreen(
                 .imePadding()
                 .navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            if (preset.requiresKey) {
+            if (account.custom) {
+                Text("Nombre", style = MaterialTheme.typography.labelLarge)
+                OutlinedTextField(
+                    value = label,
+                    onValueChange = { label = it },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+
+            Text("Tipo de API", style = MaterialTheme.typography.labelLarge)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                ApiTypes.all.forEach { tipo ->
+                    FilterChip(
+                        selected = apiType == tipo.first,
+                        onClick = { apiType = tipo.first },
+                        label = { Text(tipo.second) },
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    if (apiType == tipo.first) {
+                        Text(
+                            text = tipo.third,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = baseUrl,
+                onValueChange = { baseUrl = it },
+                label = { Text("URL base") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            Button(
+                onClick = { viewModel.saveAccountSettings(providerId, label, baseUrl, apiType) },
+                shape = RoundedCornerShape(12.dp)
+            ) { Text("Guardar datos del proveedor") }
+
+            HorizontalDivider()
+
+            if (account.requiresKey) {
                 OutlinedTextField(
                     value = key,
                     onValueChange = { key = it },
                     label = { Text("API key") },
-                    placeholder = { Text(if (hasKey) "Guardada - escribe otra para reemplazar" else preset.keyHint) },
+                    placeholder = { Text(if (hasKey) "Guardada - escribe otra para reemplazar" else "Pega la key") },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -99,50 +157,38 @@ fun ProviderDetailScreen(
                 Row2 {
                     Button(
                         onClick = {
-                            viewModel.saveApiKey(presetId, key)
+                            viewModel.saveApiKey(providerId, key)
                             key = ""
                         },
                         enabled = key.isNotBlank(),
                         shape = RoundedCornerShape(12.dp)
                     ) { Text("Guardar key") }
                     if (hasKey) {
-                        TextButton(onClick = { viewModel.saveApiKey(presetId, "") }) {
+                        TextButton(onClick = { viewModel.saveApiKey(providerId, "") }) {
                             Text("Borrar key")
                         }
                     }
                 }
             }
 
-            OutlinedTextField(
-                value = baseUrl,
-                onValueChange = { baseUrl = it },
-                label = { Text("Base URL (opcional)") },
-                placeholder = { Text(preset.baseUrl) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            )
-            OutlinedButton(
-                onClick = { viewModel.saveAccountSettings(presetId, baseUrl) },
-                shape = RoundedCornerShape(12.dp)
-            ) { Text("Guardar base URL") }
-
             HorizontalDivider()
 
             Text("Modelos", style = MaterialTheme.typography.labelLarge)
             OutlinedButton(
-                onClick = { viewModel.refreshModels(presetId) },
+                onClick = { viewModel.refreshModels(providerId) },
                 enabled = !state.busy,
                 shape = RoundedCornerShape(12.dp)
             ) {
                 if (state.busy) {
-                    CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(
+                        modifier = Modifier.padding(end = 8.dp),
+                        strokeWidth = 2.dp
+                    )
                 }
                 Text("Cargar modelos del proveedor")
             }
 
-            val models = account?.models.orEmpty()
-            if (models.isEmpty()) {
+            if (account.models.isEmpty()) {
                 Text(
                     text = "Aun no hay modelos. Carga la lista o agrega uno manualmente.",
                     style = MaterialTheme.typography.bodySmall,
@@ -153,15 +199,20 @@ fun ProviderDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    models.forEach { model ->
+                    account.models.forEach { model ->
                         FilterChip(
                             selected = false,
-                            onClick = { viewModel.toggleModel(presetId, model) },
+                            onClick = { viewModel.toggleModel(providerId, model) },
                             label = { Text(model) },
                             shape = RoundedCornerShape(12.dp)
                         )
                     }
                 }
+                Text(
+                    text = "Toca un modelo para quitarlo.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             Row2 {
@@ -176,7 +227,7 @@ fun ProviderDetailScreen(
                 Button(
                     onClick = {
                         if (manualModel.isNotBlank()) {
-                            viewModel.toggleModel(presetId, manualModel.trim())
+                            viewModel.toggleModel(providerId, manualModel.trim())
                             manualModel = ""
                         }
                     },
@@ -185,21 +236,33 @@ fun ProviderDetailScreen(
                 ) { Text("Anadir") }
             }
 
+            if (account.custom) {
+                HorizontalDivider()
+                OutlinedButton(
+                    onClick = {
+                        viewModel.deleteProvider(providerId)
+                        onBack()
+                    },
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Eliminar proveedor personalizado") }
+            }
+
             Text(
-                text = "Toca un modelo para quitarlo de la lista del chat.",
+                text = "Los cambios de nombre, URL y tipo se guardan con el boton. Los modelos se guardan al instante.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 16.dp)
             )
         }
     }
 }
 
 @Composable
-private fun Row2(content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
-    androidx.compose.foundation.layout.Row(
+private fun Row2(content: @Composable RowScope.() -> Unit) {
+    Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically,
         content = content
     )
 }
