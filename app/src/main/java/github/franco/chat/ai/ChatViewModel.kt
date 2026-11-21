@@ -406,21 +406,28 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
 
             val accumulated = StringBuilder()
             try {
-                client.stream(
-                    ChatRequest(
-                        url = account.baseUrl.trimEnd('/') + "/chat/completions",
-                        apiKey = apiKey,
-                        model = option.model,
-                        messages = apiMessages,
-                        system = withUser.config.systemPrompt,
-                        temperature = withUser.config.temperature,
-                        omitTemperature = !account.supportsTemperature,
-                        streaming = account.streaming,
-                        apiType = account.apiType
-                    )
-                ).collect { delta ->
-                    accumulated.append(delta)
-                    updateAssistant(assistantIndex, accumulated.toString())
+                val request = ChatRequest(
+                    url = account.baseUrl.trimEnd('/') + "/chat/completions",
+                    apiKey = apiKey,
+                    model = option.model,
+                    messages = apiMessages,
+                    system = withUser.config.systemPrompt,
+                    temperature = withUser.config.temperature,
+                    omitTemperature = !account.supportsTemperature,
+                    streaming = account.streaming,
+                    apiType = account.apiType
+                )
+                // Tool calling primero; si el proveedor no lo soporta, cae al stream normal.
+                val toolAnswer = client.completeWithTools(request) { status ->
+                    updateAssistant(assistantIndex, status)
+                }
+                if (toolAnswer != null) {
+                    updateAssistant(assistantIndex, toolAnswer)
+                } else {
+                    client.stream(request).collect { delta ->
+                        accumulated.append(delta)
+                        updateAssistant(assistantIndex, accumulated.toString())
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
