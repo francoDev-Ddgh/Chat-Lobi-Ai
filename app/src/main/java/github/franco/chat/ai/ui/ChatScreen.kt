@@ -203,6 +203,9 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
                             streaming = state.streaming,
                             pending = pending,
                             caps = caps,
+                            efforts = ModelCapabilities.reasoningEfforts(activeModel),
+                            effort = viewModel.reasoningEffort,
+                            onEffort = { viewModel.reasoningEffort = it },
                             onPick = { kind -> picker.launch(mimeFor(kind)) },
                             onRemovePending = { index -> pending = pending.filterIndexed { i, _ -> i != index } },
                             onSend = {
@@ -492,12 +495,16 @@ private fun ComposerBar(
     streaming: Boolean,
     pending: List<Attachment>,
     caps: ModelCaps,
+    efforts: List<String>?,
+    effort: String?,
+    onEffort: (String?) -> Unit,
     onPick: (String) -> Unit,
     onRemovePending: (Int) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    var effortMenu by remember { mutableStateOf(false) }
     Surface(color = MaterialTheme.colorScheme.background) {
         Column(
             modifier = Modifier
@@ -506,6 +513,21 @@ private fun ComposerBar(
                 .imePadding()
                 .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
+            if (efforts != null) {
+                Box {
+                    AssistChip(
+                        onClick = { effortMenu = true },
+                        label = { Text("Razonamiento: " + effortLabel(effort)) }
+                    )
+                    DropdownMenu(expanded = effortMenu, onDismissRequest = { effortMenu = false }) {
+                        DropdownMenuItem(text = { Text("Automatico") }, onClick = { effortMenu = false; onEffort(null) })
+                        efforts.forEach { option ->
+                            DropdownMenuItem(text = { Text(effortLabel(option)) }, onClick = { effortMenu = false; onEffort(option) })
+                        }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+            }
             if (pending.isNotEmpty()) {
                 Row(
                     modifier = Modifier
@@ -675,4 +697,12 @@ private fun HistoryDrawer(
             onClick = onOpenSettings
         )
     }
+}
+
+private fun effortLabel(effort: String?): String = when (effort) {
+    null -> "Automatico"
+    "low" -> "Bajo"
+    "medium" -> "Medio"
+    "high" -> "Alto"
+    else -> effort
 }
