@@ -15,8 +15,7 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.filled.CheckBox
-import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -451,12 +450,22 @@ private fun ListBlock(
             Row(modifier = Modifier.fillMaxWidth().padding(start = (item.depth * 16).dp)) {
                 val checked = item.checked
                 if (checked != null) {
-                    Icon(
-                        imageVector = if (checked) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank,
-                        contentDescription = null,
-                        tint = textColor,
-                        modifier = Modifier.padding(top = 2.dp).size(18.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 2.dp)
+                            .size(18.dp)
+                            .border(1.dp, textColor, RoundedCornerShape(3.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (checked) {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = textColor,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
                 } else {
                     val marker = if (item.ordered) "${item.number}." else if (item.depth % 2 == 0) "•" else "–"
                     Text(
