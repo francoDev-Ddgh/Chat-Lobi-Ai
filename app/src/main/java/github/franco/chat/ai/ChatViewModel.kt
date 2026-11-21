@@ -336,8 +336,12 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
         )
         // Al reenviar el historial quitamos el razonamiento: es ruido y gasta tokens.
         val history = withUser.messages.map { message ->
-            if (message.role == "assistant") message.copy(content = Reasoning.bodyOnly(message.content))
-            else message
+            if (message.role == "assistant") {
+                val parsed = Reasoning.split(message.content)
+                message.copy(content = parsed.body.ifBlank { parsed.reasoning })
+            } else {
+                message
+            }
         }
         val assistantIndex = history.size
 
