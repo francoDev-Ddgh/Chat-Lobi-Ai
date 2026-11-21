@@ -12,6 +12,7 @@ import github.franco.chat.ai.data.ChatConfig
 import github.franco.chat.ai.data.ChatRepository
 import github.franco.chat.ai.data.Message
 import github.franco.chat.ai.data.ProviderAccount
+import github.franco.chat.ai.net.ApiTypes
 import github.franco.chat.ai.net.ChatClient
 import github.franco.chat.ai.net.ChatRequest
 import github.franco.chat.ai.net.ModelsClient
@@ -40,11 +41,14 @@ data class UiState(
     val busy: Boolean = false,
     val error: String? = null
 ) {
+    val accounts: List<ProviderAccount>
+        get() = settings.accounts.ifEmpty { Providers.all }
+
+    fun account(id: String): ProviderAccount? = accounts.firstOrNull { it.id == id }
+
     val modelOptions: List<ModelOption>
-        get() = settings.accounts.filter { it.enabled }.flatMap { account ->
-            val preset = Providers.byId(account.presetId)
-            val models = account.models.ifEmpty { listOf(preset.defaultModel) }
-            models.map { ModelOption(account.presetId, preset.label, it) }
+        get() = accounts.filter { it.enabled }.flatMap { account ->
+            account.models.map { ModelOption(account.id, account.label, it) }
         }
 
     val active: ModelOption?
@@ -77,7 +81,7 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
     init {
         viewModelScope.launch {
             repository.settingsFlow.collect { settings ->
-                val saved = Providers.all.filter { repository.apiKey(it.id) != null }.map { it.id }.toSet()
+                val saved = settings.accounts.filter { repository.apiKey(it.id) != null }.map { it.id }.toSet()
                 _state.update { it.copy(settings = settings, savedKeys = saved) }
             }
         }
@@ -157,39 +161,84 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
         }
     }
 
-    fun setProviderEnabled(presetId: String, enabled: Boolean) {
+    fun setProviderEnabled(id: String, enabled: Boolean) {
         viewModelScope.launch {
-            val account = repository.account(presetId) ?: ProviderAccount(presetId)
+            val account = repository.account(id) ?: return@launch
             repository.updateAccount(account.copy(enabled = enabled))
         }
     }
 
-    fun saveAccountSettings(presetId: String, baseUrl: String) {
+    fun saveAccountSettings(id: String, label: String, baseUrl: String, apiType: String) {
         viewModelScope.launch {
-            val account = repository.account(presetId) ?: ProviderAccount(presetId)
-            repository.updateAccount(account.copy(baseUrl = baseUrl.trim()))
+            val account = repository.account(id) ?: return@launch
+            repository.updateAccount(
+                account.copy(
+                    label = label.trim().ifBlank { account.label },
+                    baseUrl = baseUrl.trim(),
+                    apiType = apiType,
+                    supportsTemperature = apiType != ApiTypes.ANTHROPIC
+                )
+            )
         }
     }
 
-    fun toggleModel(presetId: String, model: String) {
+    fun createCustomProvider(
+        label: String,
+        baseUrl: String,
+        apiType: String,
+        apiKey: String,
+        requiresKey: Boolean
+    ) {
+        val id = "custom-" + UUID.randomUUID().toString().take(8)
         viewModelScope.launch {
-            val account = repository.account(presetId) ?: ProviderAccount(presetId, enabled = true)
+            repository.updateAccount(
+                ProviderAccount(
+                    id = id,
+                    label = label.trim().ifBlank { "Proveedor personalizado" },
+                    baseUrl = baseUrl.trim(),
+                    apiType = apiType,
+                    enabled = true,
+                    custom = true,
+                    requiresKey = requiresKey,
+                    supportsTemperature = apiType != ApiTypes.ANTHROPIC,
+                    models = emptyList()
+                )
+            )
+            if (apiKey.isNotBlank()) repository.saveApiKey(id, apiKey)
+            refreshKeys()
+            refreshModels(id)
+        }
+    }
+
+    fun deleteProvider(id: String) {
+        viewModelScope.launch {
+            repository.removeAccount(id)
+            refreshKeys()
+        }
+    }
+
+    fun toggleModel(id: String, model: String) {
+        viewModelScope.launch {
+            val account = repository.account(id) ?: return@launch
             val models = if (account.models.contains(model)) account.models - model else account.models + model
-            repository.updateAccount(account.copy(models = models))
+            repository.updateAccount(account.copy(models = models.sorted()))
         }
     }
 
-    fun refreshModels(presetId: String) {
+    fun refreshModels(id: String) {
         viewModelScope.launch {
             _state.update { it.copy(busy = true) }
-            val preset = Providers.byId(presetId)
-            val account = repository.account(presetId)
-            val baseUrl = account?.baseUrl?.ifBlank { preset.baseUrl } ?: preset.baseUrl
-            val key = repository.apiKey(presetId).orEmpty()
+            val account = repository.account(id)
+            if (account == null) {
+                _state.update { it.copy(busy = false) }
+                return@launch
+            }
+            val key = repository.apiKey(id).orEmpty()
+            val anthropicStyle = account.apiType == ApiTypes.ANTHROPIC
             runCatching {
-                modelsClient.fetch(baseUrl, key, preset.id == "anthropic")
+                modelsClient.fetch(account.baseUrl, key, anthropicStyle)
             }.onSuccess { models ->
-                val current = repository.account(presetId) ?: ProviderAccount(presetId)
+                val current = repository.account(id) ?: return@onSuccess
                 repository.updateAccount(
                     current.copy(models = (current.models + models).distinct().sorted())
                 )
@@ -203,12 +252,16 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
         }
     }
 
-    fun saveApiKey(presetId: String, raw: String) {
+    fun saveApiKey(id: String, raw: String) {
         viewModelScope.launch {
-            repository.saveApiKey(presetId, raw)
-            val saved = Providers.all.filter { repository.apiKey(it.id) != null }.map { it.id }.toSet()
-            _state.update { it.copy(savedKeys = saved) }
+            repository.saveApiKey(id, raw)
+            refreshKeys()
         }
+    }
+
+    private suspend fun refreshKeys() {
+        val saved = _state.value.accounts.filter { repository.apiKey(it.id) != null }.map { it.id }.toSet()
+        _state.update { it.copy(savedKeys = saved) }
     }
 
     fun send(text: String) {
@@ -221,8 +274,11 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
             return
         }
 
-        val preset = Providers.byId(option.providerId)
-        val account = snapshot.settings.accounts.firstOrNull { it.presetId == option.providerId }
+        val account = snapshot.account(option.providerId)
+        if (account == null) {
+            _state.update { it.copy(error = "Proveedor no configurado") }
+            return
+        }
 
         val base = snapshot.current ?: Chat(id = UUID.randomUUID().toString())
         val title = if (base.messages.isEmpty()) text.trim().take(48) else base.title
@@ -243,25 +299,24 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
         }
 
         streamJob = viewModelScope.launch {
-            val apiKey = repository.apiKey(option.providerId).orEmpty()
-            if (preset.requiresKey && apiKey.isBlank()) {
-                _state.update { it.copy(streaming = false, error = "Falta la API key de ${preset.label}") }
+            val apiKey = repository.apiKey(account.id).orEmpty()
+            if (account.requiresKey && apiKey.isBlank()) {
+                _state.update { it.copy(streaming = false, error = "Falta la API key de ${account.label}") }
                 persist()
                 return@launch
             }
 
             val accumulated = StringBuilder()
-            val baseUrl = account?.baseUrl?.ifBlank { preset.baseUrl } ?: preset.baseUrl
             try {
                 client.stream(
                     ChatRequest(
-                        url = baseUrl.trimEnd('/') + "/chat/completions",
+                        url = account.baseUrl.trimEnd('/') + "/chat/completions",
                         apiKey = apiKey,
                         model = option.model,
                         messages = history,
                         system = withUser.config.systemPrompt,
                         temperature = withUser.config.temperature,
-                        omitTemperature = !preset.supportsTemperature
+                        omitTemperature = !account.supportsTemperature
                     )
                 ).collect { delta ->
                     accumulated.append(delta)
