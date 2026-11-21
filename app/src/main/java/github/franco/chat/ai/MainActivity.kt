@@ -12,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import github.franco.chat.ai.ui.ChatScreen
+import github.franco.chat.ai.ui.CustomProviderScreen
 import github.franco.chat.ai.ui.ProviderDetailScreen
 import github.franco.chat.ai.ui.ProvidersScreen
 import github.franco.chat.ai.ui.SettingsScreen
@@ -21,6 +22,7 @@ sealed interface Screen {
     data object Chat : Screen
     data object Settings : Screen
     data object Providers : Screen
+    data object CustomProvider : Screen
     data class ProviderDetail(val presetId: String) : Screen
 }
 
@@ -43,6 +45,7 @@ private fun AppRoot() {
         screen = when (val current = screen) {
             is Screen.ProviderDetail -> Screen.Providers
             Screen.Providers -> Screen.Settings
+            Screen.CustomProvider -> Screen.Providers
             else -> Screen.Chat
         }
     }
@@ -57,7 +60,13 @@ private fun AppRoot() {
         Screen.Providers -> ProvidersScreen(
             viewModel = viewModel,
             onBack = { screen = Screen.Settings },
-            onOpenProvider = { screen = Screen.ProviderDetail(it) }
+            onOpenProvider = { screen = Screen.ProviderDetail(it) },
+            onCreateCustom = { screen = Screen.CustomProvider }
+        )
+        Screen.CustomProvider -> CustomProviderScreen(
+            viewModel = viewModel,
+            onBack = { screen = Screen.Providers },
+            onCreated = { screen = Screen.Providers }
         )
         is Screen.ProviderDetail -> ProviderDetailScreen(
             viewModel = viewModel,
