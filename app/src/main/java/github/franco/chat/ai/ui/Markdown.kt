@@ -133,6 +133,10 @@ private fun parseBlocks(src: String): List<Block> {
             out += Block.Table(header, rows)
             continue
         }
+        if (line.isBlank() && buf.isEmpty()) {
+            i++
+            continue
+        }
         if (line.isBlank() && buf.isNotEmpty()) {
             flush()
             i++
@@ -429,16 +433,15 @@ private fun TableBlock(
     linkColor: Color
 ) {
     val cols = maxOf(header.size, rows.maxOfOrNull { it.size } ?: 0).coerceAtLeast(1)
+    val fill = cols <= 4
     val border = textColor.copy(alpha = 0.2f)
-    Column(
-        modifier = Modifier
-            .horizontalScroll(rememberScrollState())
-            .border(1.dp, border, RoundedCornerShape(6.dp))
-    ) {
-        TableRowView(header.padded(cols), true, textColor, codeBg, linkColor)
+    val tableModifier = (if (fill) Modifier.fillMaxWidth() else Modifier.horizontalScroll(rememberScrollState()))
+        .border(1.dp, border, RoundedCornerShape(6.dp))
+    Column(modifier = tableModifier) {
+        TableRowView(header.padded(cols), true, fill, textColor, codeBg, linkColor)
         rows.forEach { row ->
             HorizontalDivider(color = border)
-            TableRowView(row.padded(cols), false, textColor, codeBg, linkColor)
+            TableRowView(row.padded(cols), false, fill, textColor, codeBg, linkColor)
         }
     }
 }
@@ -447,16 +450,16 @@ private fun TableBlock(
 private fun TableRowView(
     cells: List<String>,
     header: Boolean,
+    fill: Boolean,
     textColor: Color,
     codeBg: Color,
     linkColor: Color
 ) {
-    Row {
+    Row(modifier = if (fill) Modifier.fillMaxWidth() else Modifier) {
         cells.forEach { cell ->
             Text(
                 text = inlineMarkdown(cell, textColor, codeBg, linkColor),
-                modifier = Modifier
-                    .width(150.dp)
+                modifier = (if (fill) Modifier.weight(1f) else Modifier.width(140.dp))
                     .padding(horizontal = 8.dp, vertical = 6.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (header) FontWeight.Bold else null,
