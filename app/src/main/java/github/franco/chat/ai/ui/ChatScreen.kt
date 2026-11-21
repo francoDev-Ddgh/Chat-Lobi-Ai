@@ -106,6 +106,7 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
     var pending by remember { mutableStateOf<List<Attachment>>(emptyList()) }
     val activeModel = state.active?.model.orEmpty()
     val caps = remember(activeModel) { ModelCapabilities.of(activeModel) }
+    val activeAccount = state.settings.accounts.firstOrNull { it.id == state.active?.providerId }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
             readAttachment(context, uri)
@@ -203,7 +204,11 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
                             streaming = state.streaming,
                             pending = pending,
                             caps = caps,
-                            efforts = ModelCapabilities.reasoningEfforts(activeModel),
+                            efforts = ModelCapabilities.reasoningEfforts(
+                                activeModel,
+                                activeAccount?.reasoningModels.orEmpty(),
+                                activeAccount?.metaModels.orEmpty()
+                            ),
                             effort = viewModel.reasoningEffort,
                             onEffort = { viewModel.reasoningEffort = it },
                             onPick = { kind -> picker.launch(mimeFor(kind)) },
