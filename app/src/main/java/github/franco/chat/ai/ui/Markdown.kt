@@ -10,6 +10,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -58,14 +65,29 @@ private sealed interface Block {
     data class Paragraph(val raw: String) : Block
     data class Heading(val level: Int, val text: String) : Block
     data class Code(val lang: String, val code: String) : Block
-    data object Rule : Block
+    data class Quote(val blocks: List<Block>) : Block
+    data class ListBlock(val items: List<MdItem>) : Block
     data class Table(val header: List<String>, val rows: List<List<String>>) : Block
+    data object Rule : Block
 }
 
-private val TABLE_SEP = Regex("^\\s*\\|?\\s*:?-+:?\\s*(\\|\\s*:?-+:?\\s*)+\\|?\\s*$")
+private data class MdItem(
+    val depth: Int,
+    val ordered: Boolean,
+    val number: Int,
+    val text: String,
+    val checked: Boolean?
+)
+
 private val FENCE = Regex("^\\s{0,3}(`{3,}|~{3,})\\s*([^\\s`]*).*$")
 private val HEADING = Regex("^\\s{0,3}(#{1,6})\\s+(.*)$")
 private val RULE = Regex("^\\s{0,3}([-*_])(\\s*\\1){2,}\\s*$")
+private val TABLE_SEP = Regex("^\\s*\\|?\\s*:?-+:?\\s*(\\|\\s*:?-+:?\\s*)+\\|?\\s*$")
+private val QUOTE = Regex("^\\s{0,3}>\\s?(.*)$")
+private val BULLET = Regex("^(\\s*)[-*+]\\s+(.*)$")
+private val ORDERED = Regex("^(\\s*)(\\d+)[.)]\\s+(.*)$")
+private val TASK = Regex("^\\[( |x|X)\\]\\s+(.*)$")
+private const val ESCAPABLE = "\\`*_{}[]()#+-.!~|>"
 
 private fun splitRow(line: String): List<String> {
     var t = line.trim()
@@ -75,6 +97,15 @@ private fun splitRow(line: String): List<String> {
 }
 
 private fun List<String>.padded(n: Int): List<String> = this + List(maxOf(0, n - size)) { "" }
+
+private fun parseItem(depth: Int, ordered: Boolean, number: Int, body: String): MdItem {
+    val task = TASK.find(body)
+    return if (task != null) {
+        MdItem(depth, ordered, number, task.groupValues[2], task.groupValues[1].lowercase() == "x")
+    } else {
+        MdItem(depth, ordered, number, body, null)
+    }
+}
 
 private fun parseBlocks(src: String): List<Block> {
     val lines = src.replace("\r\n", "\n").lines()
@@ -90,6 +121,7 @@ private fun parseBlocks(src: String): List<Block> {
     var i = 0
     while (i < lines.size) {
         val line = lines[i]
+
         val fence = FENCE.find(line)
         if (fence != null) {
             flush()
@@ -108,19 +140,28 @@ private fun parseBlocks(src: String): List<Block> {
             out += Block.Code(lang, code.toString().trimEnd('\n'))
             continue
         }
-        if (buf.isEmpty()) {
-            val h = HEADING.find(line)
-            if (h != null) {
-                out += Block.Heading(h.groupValues[1].length, h.groupValues[2].trim())
-                i++
-                continue
-            }
-            if (RULE.matches(line)) {
-                out += Block.Rule
-                i++
-                continue
-            }
+
+        if (line.isBlank()) {
+            flush()
+            i++
+            continue
         }
+
+        val h = HEADING.find(line)
+        if (h != null) {
+            flush()
+            out += Block.Heading(h.groupValues[1].length, h.groupValues[2].trim())
+            i++
+            continue
+        }
+
+        if (RULE.matches(line)) {
+            flush()
+            out += Block.Rule
+            i++
+            continue
+        }
+
         if (i + 1 < lines.size && line.contains('|') && TABLE_SEP.matches(lines[i + 1])) {
             flush()
             val header = splitRow(line)
@@ -133,15 +174,43 @@ private fun parseBlocks(src: String): List<Block> {
             out += Block.Table(header, rows)
             continue
         }
-        if (line.isBlank() && buf.isEmpty()) {
-            i++
-            continue
-        }
-        if (line.isBlank() && buf.isNotEmpty()) {
+
+        if (QUOTE.matches(line)) {
             flush()
-            i++
+            val inner = mutableListOf<String>()
+            while (i < lines.size) {
+                val q = QUOTE.find(lines[i]) ?: break
+                inner += q.groupValues[1]
+                i++
+            }
+            out += Block.Quote(parseBlocks(inner.joinToString("\n")))
             continue
         }
+
+        if (BULLET.matches(line) || ORDERED.matches(line)) {
+            flush()
+            val items = mutableListOf<MdItem>()
+            while (i < lines.size) {
+                val l = lines[i]
+                if (l.isBlank() || RULE.matches(l)) break
+                val ord = ORDERED.find(l)
+                val bul = BULLET.find(l)
+                if (ord != null) {
+                    items += parseItem(ord.groupValues[1].length / 2, true, ord.groupValues[2].toIntOrNull() ?: 1, ord.groupValues[3])
+                } else if (bul != null) {
+                    items += parseItem(bul.groupValues[1].length / 2, false, 0, bul.groupValues[2])
+                } else if (l.first().isWhitespace() && items.isNotEmpty()) {
+                    val last = items.removeAt(items.lastIndex)
+                    items += last.copy(text = last.text + " " + l.trim())
+                } else {
+                    break
+                }
+                i++
+            }
+            out += Block.ListBlock(items)
+            continue
+        }
+
         buf.appendLine(line)
         i++
     }
@@ -149,12 +218,26 @@ private fun parseBlocks(src: String): List<Block> {
     return out
 }
 
-private fun formatParagraph(raw: String): String = raw.lines().joinToString("\n") { line ->
-    val t = line.trimStart()
-    when {
-        t.startsWith("- ") || t.startsWith("* ") || t.startsWith("+ ") -> "•  " + t.drop(2)
-        else -> line
+private fun parseLink(src: String, start: Int): Triple<String, String, Int>? {
+    if (src[start] != '[') return null
+    val rb = src.indexOf(']', start + 1)
+    if (rb < 0 || rb + 1 >= src.length || src[rb + 1] != '(') return null
+    val rp = src.indexOf(')', rb + 2)
+    if (rp < 0) return null
+    return Triple(src.substring(start + 1, rb), src.substring(rb + 2, rp).trim(), rp + 1)
+}
+
+private fun findClosing(src: String, marker: Char, from: Int): Int {
+    var j = from
+    while (j < src.length) {
+        if (src[j] == marker) {
+            val nextSame = j + 1 < src.length && src[j + 1] == marker
+            val prevSame = src[j - 1] == marker
+            if (!nextSame && !prevSame) return j
+        }
+        j++
     }
+    return -1
 }
 
 private fun inlineMarkdown(
@@ -163,61 +246,105 @@ private fun inlineMarkdown(
     codeBg: Color,
     linkColor: Color
 ): AnnotatedString = buildAnnotatedString {
-    var i = 0
+    val linkStyle = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)
+    fun styled(style: SpanStyle, inner: String) {
+        withStyle(style) { append(inlineMarkdown(inner, textColor, codeBg, linkColor)) }
+    }
     val n = src.length
+    var i = 0
     while (i < n) {
         val ch = src[i]
+
+        if (ch == '\\' && i + 1 < n && src[i + 1] in ESCAPABLE) {
+            append(src[i + 1])
+            i += 2
+            continue
+        }
+
         if (ch == '`') {
-            val end = src.indexOf('`', i + 1)
-            if (end > i + 1) {
-                withStyle(
-                    SpanStyle(
-                        fontFamily = FontFamily.Monospace,
-                        background = codeBg,
-                        color = textColor
-                    )
-                ) { append(src.substring(i + 1, end)) }
+            var k = 0
+            while (i + k < n && src[i + k] == '`') k++
+            val end = src.indexOf("`".repeat(k), i + k)
+            if (end > 0) {
+                withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBg, color = textColor)) {
+                    append(src.substring(i + k, end).trim())
+                }
+                i = end + k
+                continue
+            }
+        }
+
+        if (ch == '!' && i + 1 < n && src[i + 1] == '[') {
+            val link = parseLink(src, i + 1)
+            if (link != null) {
+                withLink(LinkAnnotation.Url(link.second)) {
+                    withStyle(linkStyle) { append("Imagen: " + link.first) }
+                }
+                i = link.third
+                continue
+            }
+        }
+
+        if (ch == '[') {
+            val link = parseLink(src, i)
+            if (link != null) {
+                withLink(LinkAnnotation.Url(link.second)) {
+                    withStyle(linkStyle) { append(link.first) }
+                }
+                i = link.third
+                continue
+            }
+        }
+
+        if (ch == '<') {
+            val end = src.indexOf('>', i + 1)
+            if (end > i + 1 && (src.startsWith("http://", i + 1) || src.startsWith("https://", i + 1))) {
+                val url = src.substring(i + 1, end)
+                withLink(LinkAnnotation.Url(url)) { withStyle(linkStyle) { append(url) } }
                 i = end + 1
                 continue
             }
         }
-        if (ch == '*' && i + 1 < n && src[i + 1] == '*') {
-            val end = src.indexOf("**", i + 2)
-            if (end > i) {
-                withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
-                    append(inlineMarkdown(src.substring(i + 2, end), textColor, codeBg, linkColor))
-                }
+
+        if (ch == 'h' && (src.startsWith("https://", i) || src.startsWith("http://", i)) &&
+            (i == 0 || !src[i - 1].isLetterOrDigit())
+        ) {
+            var end = i
+            while (end < n && !src[end].isWhitespace() && src[end] != '<' && src[end] != '>') end++
+            val url = src.substring(i, end).trimEnd('.', ',', ';', ':', '!', '?', ')')
+            withLink(LinkAnnotation.Url(url)) { withStyle(linkStyle) { append(url) } }
+            i += url.length
+            continue
+        }
+
+        if (src.startsWith("~~", i)) {
+            val end = src.indexOf("~~", i + 2)
+            if (end > i + 2) {
+                styled(SpanStyle(textDecoration = TextDecoration.LineThrough), src.substring(i + 2, end))
                 i = end + 2
                 continue
             }
         }
-        if (ch == '*' || ch == '_') {
-            val end = src.indexOf(ch, i + 1)
-            if (end > i + 1) {
-                withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
-                    append(inlineMarkdown(src.substring(i + 1, end), textColor, codeBg, linkColor))
-                }
+
+        if (src.startsWith("**", i) || src.startsWith("__", i)) {
+            val marker = src.substring(i, i + 2)
+            val end = src.indexOf(marker, i + 2)
+            if (end > i + 2) {
+                styled(SpanStyle(fontWeight = FontWeight.Bold), src.substring(i + 2, end))
+                i = end + 2
+                continue
+            }
+        }
+
+        if (ch == '*' || (ch == '_' && (i == 0 || !src[i - 1].isLetterOrDigit()))) {
+            val end = findClosing(src, ch, i + 1)
+            if (end > i + 1 && (ch == '*' || end + 1 >= n || !src[end + 1].isLetterOrDigit())) {
+                styled(SpanStyle(fontStyle = FontStyle.Italic), src.substring(i + 1, end))
                 i = end + 1
                 continue
             }
         }
-        if (ch == '[') {
-            val rb = src.indexOf(']', i + 1)
-            if (rb > i && rb + 1 < n && src[rb + 1] == '(') {
-                val rp = src.indexOf(')', rb + 2)
-                if (rp > rb) {
-                    val label = src.substring(i + 1, rb)
-                    val url = src.substring(rb + 2, rp)
-                    withLink(LinkAnnotation.Url(url)) {
-                        withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
-                            append(label)
-                        }
-                    }
-                    i = rp + 1
-                    continue
-                }
-            }
-        }
+
         append(ch)
         i++
     }
@@ -255,28 +382,7 @@ fun MessageContent(
         if (parsed.body.isNotBlank()) {
             val blocks = remember(parsed.body) { parseBlocks(parsed.body) }
             SelectionContainer {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    blocks.forEach { block ->
-                        when (block) {
-                            is Block.Code -> CodeBlock(block.lang, block.code, isUser)
-                            is Block.Heading -> Text(
-                                text = inlineMarkdown(block.text, textColor, codeBg, linkColor),
-                                style = if (block.level <= 2) MaterialTheme.typography.titleMedium
-                                else MaterialTheme.typography.titleSmall,
-                                color = textColor
-                            )
-                            is Block.Table -> TableBlock(block.header, block.rows, textColor, codeBg, linkColor)
-                            is Block.Rule -> HorizontalDivider(
-                                color = textColor.copy(alpha = 0.15f)
-                            )
-                            is Block.Paragraph -> Text(
-                                text = inlineMarkdown(formatParagraph(block.raw), textColor, codeBg, linkColor),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = textColor
-                            )
-                        }
-                    }
-                }
+                RenderBlocks(blocks, textColor, codeBg, linkColor, muted, isUser)
             }
         } else if (streaming) {
             Text(
@@ -290,6 +396,84 @@ fun MessageContent(
                 style = MaterialTheme.typography.labelSmall,
                 color = muted
             )
+        }
+    }
+}
+
+@Composable
+private fun RenderBlocks(
+    blocks: List<Block>,
+    textColor: Color,
+    codeBg: Color,
+    linkColor: Color,
+    muted: Color,
+    isUser: Boolean
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        blocks.forEach { block ->
+            when (block) {
+                is Block.Code -> CodeBlock(block.lang, block.code, isUser)
+                is Block.Heading -> Text(
+                    text = inlineMarkdown(block.text, textColor, codeBg, linkColor),
+                    style = if (block.level <= 2) MaterialTheme.typography.titleMedium
+                    else MaterialTheme.typography.titleSmall,
+                    color = textColor
+                )
+                is Block.Rule -> HorizontalDivider(color = textColor.copy(alpha = 0.15f))
+                is Block.Paragraph -> Text(
+                    text = inlineMarkdown(block.raw, textColor, codeBg, linkColor),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = textColor
+                )
+                is Block.Table -> TableBlock(block.header, block.rows, textColor, codeBg, linkColor)
+                is Block.ListBlock -> ListBlock(block.items, textColor, codeBg, linkColor)
+                is Block.Quote -> Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+                    Box(modifier = Modifier.width(3.dp).fillMaxHeight().background(muted, RoundedCornerShape(2.dp))) { }
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        RenderBlocks(block.blocks, textColor, codeBg, linkColor, muted, isUser)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ListBlock(
+    items: List<MdItem>,
+    textColor: Color,
+    codeBg: Color,
+    linkColor: Color
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        items.forEach { item ->
+            Row(modifier = Modifier.fillMaxWidth().padding(start = (item.depth * 16).dp)) {
+                val checked = item.checked
+                if (checked != null) {
+                    Icon(
+                        imageVector = if (checked) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank,
+                        contentDescription = null,
+                        tint = textColor,
+                        modifier = Modifier.padding(top = 2.dp).size(18.dp)
+                    )
+                } else {
+                    val marker = if (item.ordered) "${item.number}." else if (item.depth % 2 == 0) "•" else "–"
+                    Text(
+                        text = marker,
+                        color = textColor,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.width(24.dp)
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = inlineMarkdown(item.text, textColor, codeBg, linkColor),
+                    color = textColor,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 }
