@@ -316,25 +316,59 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
         val snapshot = _state.value
         if ((text.isBlank() && attachments.isEmpty()) || snapshot.streaming) return
 
+        val base = snapshot.current ?: Chat(id = UUID.randomUUID().toString())
+        val title = if (base.messages.isEmpty()) text.trim().ifBlank { attachments.first().name }.take(48) else base.title
+        startStream(
+            base.copy(
+                messages = base.messages + Message("user", text.trim(), attachments),
+                title = title,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    /**
+     * Regenera la respuesta del asistente en [index]. La respuesta y todo lo posterior
+     * se eliminan del chat, asi el modelo no vuelve a verlos.
+     */
+    fun regenerate(index: Int) {
+        val snapshot = _state.value
+        val chat = snapshot.current ?: return
+        if (snapshot.streaming || index <= 0 || chat.messages.getOrNull(index)?.role != "assistant") return
+        startStream(chat.copy(messages = chat.messages.take(index), updatedAt = System.currentTimeMillis()))
+    }
+
+    /**
+     * Edita el mensaje del usuario en [index]. Ese mensaje y todo lo posterior se eliminan
+     * y el texto editado se reenvia como si la conversacion anterior nunca hubiera existido.
+     */
+    fun editUser(index: Int, newText: String) {
+        val snapshot = _state.value
+        val chat = snapshot.current ?: return
+        val old = chat.messages.getOrNull(index) ?: return
+        val text = newText.trim()
+        if (snapshot.streaming || old.role != "user" || (text.isBlank() && old.attachments.isEmpty())) return
+        startStream(
+            chat.copy(
+                messages = chat.messages.take(index) + Message("user", text, old.attachments),
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    private fun startStream(withUser: Chat) {
+        val snapshot = _state.value
         val option = snapshot.active
         if (option == null) {
             _state.update { it.copy(error = "Conecta un proveedor en Ajustes > Proveedores") }
             return
         }
-
         val account = snapshot.account(option.providerId)
         if (account == null) {
             _state.update { it.copy(error = "Proveedor no configurado") }
             return
         }
 
-        val base = snapshot.current ?: Chat(id = UUID.randomUUID().toString())
-        val title = if (base.messages.isEmpty()) text.trim().ifBlank { attachments.first().name }.take(48) else base.title
-        val withUser = base.copy(
-            messages = base.messages + Message("user", text.trim(), attachments),
-            title = title,
-            updatedAt = System.currentTimeMillis()
-        )
         // El razonamiento solo se quita del payload que va al proveedor; la vista lo conserva.
         // Los mensajes del asistente sin respuesta visible se omiten para no enviar contenido vacio.
         val apiMessages = withUser.messages.mapNotNull { message ->
