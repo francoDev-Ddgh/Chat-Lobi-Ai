@@ -357,12 +357,10 @@ fun MessageContent(
     isUser: Boolean
 ) {
     val parsed = remember(raw) { Reasoning.split(raw) }
-    val textColor = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-    val muted = if (isUser) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.55f)
-    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
-    val codeBg = if (isUser) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.14f)
-    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-    val linkColor = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+    val codeBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
+    val linkColor = MaterialTheme.colorScheme.primary
 
     Column {
         // Si el modelo no manda texto fuera del razonamiento, mostramos el razonamiento
