@@ -9,6 +9,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.item
+import androidx.compose.material3.Button
+import github.franco.chat.ai.data.Chat
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -144,7 +147,7 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
-                ModalDrawerSheet {
+                ModalDrawerSheet(drawerContainerColor = MaterialTheme.colorScheme.background) {
                     HistoryDrawer(
                         state = state,
                         onNewChat = {
@@ -696,6 +699,15 @@ private fun readAttachment(context: Context, uri: Uri): Result<Attachment> = run
     }
 }
 
+private const val DAY_MS = 24L * 60 * 60 * 1000
+
+private fun groupLabel(ageMs: Long): String = when {
+    ageMs < DAY_MS -> "Hoy"
+    ageMs < 2 * DAY_MS -> "Ayer"
+    ageMs < 7 * DAY_MS -> "Últimos 7 días"
+    else -> "Anteriores"
+}
+
 @Composable
 private fun HistoryDrawer(
     state: UiState,
@@ -704,81 +716,163 @@ private fun HistoryDrawer(
     onDelete: (String) -> Unit,
     onOpenSettings: () -> Unit
 ) {
-    val chats = remember(state.chats) { state.chats.sortedByDescending { it.updatedAt } }
+    var query by remember { mutableStateOf("") }
+    val now = System.currentTimeMillis()
+    val chats = remember(state.chats, query) {
+        state.chats
+            .filter { query.isBlank() || it.title.contains(query, ignoreCase = true) }
+            .sortedByDescending { it.updatedAt }
+    }
+    val groups = remember(chats, now) { chats.groupBy { groupLabel(now - it.updatedAt) } }
 
-    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 16.dp)) {
-        Text(
-            text = "Historial",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-        )
-        NavigationDrawerItem(
-            label = { Text("Nuevo chat") },
-            icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-            selected = false,
-            onClick = onNewChat,
-            shape = RoundedCornerShape(12.dp)
-        )
+    Column(modifier = Modifier.fillMaxSize().padding(vertical = 16.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+            Text(
+                text = "Chat-Lobi-Ai",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = onNewChat,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Nuevo chat")
+            }
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text("Buscar chats") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp)
+            )
+        }
+
         Spacer(Modifier.height(8.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
-        Spacer(Modifier.height(8.dp))
-        LazyColumn(modifier = Modifier.weight(1f)) {
-            items(chats, key = { it.id }) { chat ->
-                val selected = chat.id == state.current?.id
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (selected) MaterialTheme.colorScheme.surfaceVariant
-                    else MaterialTheme.colorScheme.background.copy(alpha = 0f)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .clickable { onSelect(chat.id) }
-                            .padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = chat.title.ifBlank { "Sin título" },
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            val model = chat.config.model.ifBlank { state.settings.lastModel }
-                            if (model.isNotBlank()) {
-                                Text(
-                                    text = model,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                        IconButton(onClick = { onDelete(chat.id) }) {
-                            Icon(
-                                imageVector = Icons.Filled.Delete,
-                                contentDescription = "Borrar chat",
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+
+        if (chats.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (query.isBlank()) "Aún no hay conversaciones. Empieza una nueva." else "Sin resultados para esa búsqueda.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                groups.forEach { (label, group) ->
+                    item(key = "header-$label") {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 4.dp)
+                        )
+                    }
+                    items(group, key = { it.id }) { chat ->
+                        ChatRow(
+                            chat = chat,
+                            selected = chat.id == state.current?.id,
+                            fallbackModel = state.settings.lastModel,
+                            onSelect = onSelect,
+                            onDelete = onDelete
+                        )
                     }
                 }
             }
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
-        Spacer(Modifier.height(8.dp))
-        NavigationDrawerItem(
-            label = { Text("Ajustes") },
-            icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
-            selected = false,
-            onClick = onOpenSettings,
-            shape = RoundedCornerShape(12.dp)
+
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
         )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onOpenSettings() }
+                .padding(horizontal = 24.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Filled.Settings,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = "Ajustes",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChatRow(
+    chat: Chat,
+    selected: Boolean,
+    fallbackModel: String,
+    onSelect: (String) -> Unit,
+    onDelete: (String) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .clickable { onSelect(chat.id) },
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) MaterialTheme.colorScheme.surfaceVariant
+        else MaterialTheme.colorScheme.background.copy(alpha = 0f)
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 14.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = chat.title.ifBlank { "Sin título" },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                val model = chat.config.model.ifBlank { fallbackModel }
+                if (model.isNotBlank()) {
+                    Text(
+                        text = model,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            IconButton(onClick = { onDelete(chat.id) }, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = "Borrar chat",
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }
 
