@@ -7,13 +7,14 @@ data class ParsedMessage(
 
 /**
  * Separa el bloque de razonamiento del texto visible.
- * Tolera <think>, <thinking>, <reasoning>, etiquetas de cierre con espacios
- * (</think >) y bloques que aun no se cerraron mientras se transmite.
+ * Tolera <think>, <thinking>, <reasoning> y <thought> (Gemma/Gemini las emiten asi),
+ * etiquetas de cierre con espacios (</think >) y bloques que aun no se cerraron
+ * mientras se transmite.
  */
 object Reasoning {
 
-    private val open = Regex("(?i)<(?:think|thinking|reasoning)\\b[^>]*>")
-    private val close = Regex("(?i)</(?:think|thinking|reasoning)\\s*>")
+    private val open = Regex("(?i)<(?:think|thinking|reasoning|thought|thoughts)\\b[^>]*>")
+    private val close = Regex("(?i)</(?:think|thinking|reasoning|thought|thoughts)\\s*>")
 
     fun split(raw: String): ParsedMessage {
         if (raw.isEmpty()) return ParsedMessage("", "")
