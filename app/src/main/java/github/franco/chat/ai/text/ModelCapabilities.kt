@@ -13,12 +13,18 @@ object ModelCapabilities {
     )
     private val audioHints = listOf("audio")
 
-    /** Niveles de razonamiento que el modelo parece aceptar, o null si no expone el control. */
-    fun reasoningEfforts(modelId: String): List<String>? {
+    /**
+     * Niveles de razonamiento que el modelo expone, o null si no los expone.
+     * Primero usa lo que informa el proveedor (supported_parameters); el id solo es respaldo.
+     */
+    fun reasoningEfforts(modelId: String, reasoningModels: List<String>, metaModels: List<String>): List<String>? {
+        val levels = listOf("low", "medium", "high")
+        if (modelId in reasoningModels) return levels
+        if (modelId in metaModels) return null
         val id = modelId.lowercase()
-        val reasoning = Regex("(^|[/:._-])(o1|o3|o4)([-._:]|$)").containsMatchIn(id) ||
+        val byName = Regex("(^|[/:._-])(o1|o3|o4)([-._:]|$)").containsMatchIn(id) ||
             listOf("gpt-5", "reasoner", "-r1", "qwq", "thinking").any { id.contains(it) }
-        return if (reasoning) listOf("low", "medium", "high") else null
+        return if (byName) levels else null
     }
 
     fun of(modelId: String): ModelCaps {
