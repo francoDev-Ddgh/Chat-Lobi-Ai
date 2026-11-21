@@ -374,7 +374,7 @@ private fun MessageBubble(
     onEdit: (String) -> Unit
 ) {
     val isUser = message.role == "user"
-    val container = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+    val container = if (isUser) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.background.copy(alpha = 0f)
     var editing by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
 
@@ -395,14 +395,14 @@ private fun MessageBubble(
                         message.attachments.forEach { attachment ->
                             Text(
                                 text = "Adjunto: ${attachment.name}",
-                                color = MaterialTheme.colorScheme.onPrimary,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 style = MaterialTheme.typography.labelMedium
                             )
                         }
                         if (message.content.isNotBlank()) {
                             Text(
                                 text = message.content,
-                                color = MaterialTheme.colorScheme.onPrimary,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 style = MaterialTheme.typography.bodyLarge
                             )
                         }
