@@ -46,7 +46,7 @@ private class StreamWrap(val emit: suspend (String) -> Unit) {
     suspend fun reasoning(delta: String) {
         if (!reasoningOpen) {
             reasoningOpen = true
-            emit("<think\n")
+            emit("<think>\n")
         }
         emit(delta)
     }
@@ -54,7 +54,7 @@ private class StreamWrap(val emit: suspend (String) -> Unit) {
     suspend fun content(delta: String) {
         if (reasoningOpen) {
             reasoningOpen = false
-            emit("\n</think\n>\n")
+            emit("\n</think>\n")
         }
         emit(delta)
     }
@@ -62,7 +62,7 @@ private class StreamWrap(val emit: suspend (String) -> Unit) {
     suspend fun finish() {
         if (reasoningOpen) {
             reasoningOpen = false
-            emit("\n</think\n>")
+            emit("\n</think>")
         }
     }
 }
@@ -199,9 +199,9 @@ class ChatClient {
         val reasoning = (message["reasoning_content"] as? JsonPrimitive)?.contentOrNull
             ?: (message["reasoning"] as? JsonPrimitive)?.contentOrNull
         if (!reasoning.isNullOrBlank()) {
-            emit("<think\n")
+            emit("<think>\n")
             emit(reasoning)
-            emit("\n</think\n>\n")
+            emit("\n</think>\n")
         }
         if (content.isNotEmpty()) emit(content)
     }
