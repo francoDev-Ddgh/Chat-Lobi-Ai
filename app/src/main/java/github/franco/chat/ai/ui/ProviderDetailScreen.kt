@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -142,6 +143,45 @@ fun ProviderDetailScreen(
 
             HorizontalDivider()
 
+            Row2 {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Streaming", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        text = "Activado por defecto. Desactívalo si el proveedor corta la conexión a mitad de respuesta.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = account.streaming,
+                    onCheckedChange = { viewModel.setStreaming(providerId, it) }
+                )
+            }
+
+            OutlinedButton(
+                onClick = { viewModel.testConnection(providerId) },
+                enabled = !state.pingBusy,
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                if (state.pingBusy) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.padding(end = 8.dp),
+                        strokeWidth = 2.dp
+                    )
+                }
+                Text(if (state.pingBusy) "Probando..." else "Probar conexión (ping)")
+            }
+            state.pingResult?.let { result ->
+                Text(
+                    text = result,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (result.startsWith("OK")) MaterialTheme.colorScheme.onSurfaceVariant
+                    else MaterialTheme.colorScheme.error
+                )
+            }
+
+            HorizontalDivider()
+
             if (account.requiresKey) {
                 OutlinedTextField(
                     value = key,
@@ -248,7 +288,7 @@ fun ProviderDetailScreen(
             }
 
             Text(
-                text = "Los cambios de nombre, URL y tipo se guardan con el boton. Los modelos se guardan al instante.",
+                text = "Los cambios de nombre, URL y tipo se guardan con el boton. Los modelos y el streaming se guardan al instante.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 16.dp)
