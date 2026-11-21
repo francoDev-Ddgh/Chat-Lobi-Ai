@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import github.franco.chat.ai.data.AppSettings
+import github.franco.chat.ai.data.Attachment
 import github.franco.chat.ai.data.Chat
 import github.franco.chat.ai.data.ChatConfig
 import github.franco.chat.ai.data.ChatRepository
@@ -311,9 +312,9 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
         _state.update { it.copy(savedKeys = saved) }
     }
 
-    fun send(text: String) {
+    fun send(text: String, attachments: List<Attachment> = emptyList()) {
         val snapshot = _state.value
-        if (text.isBlank() || snapshot.streaming) return
+        if ((text.isBlank() && attachments.isEmpty()) || snapshot.streaming) return
 
         val option = snapshot.active
         if (option == null) {
@@ -328,9 +329,9 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
         }
 
         val base = snapshot.current ?: Chat(id = UUID.randomUUID().toString())
-        val title = if (base.messages.isEmpty()) text.trim().take(48) else base.title
+        val title = if (base.messages.isEmpty()) text.trim().ifBlank { attachments.first().name }.take(48) else base.title
         val withUser = base.copy(
-            messages = base.messages + Message("user", text.trim()),
+            messages = base.messages + Message("user", text.trim(), attachments),
             title = title,
             updatedAt = System.currentTimeMillis()
         )
@@ -340,6 +341,13 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
             if (message.role == "assistant") {
                 val body = Reasoning.split(message.content).body
                 if (body.isBlank()) null else message.copy(content = body)
+            } else if (message.attachments.isNotEmpty()) {
+                val inlined = message.attachments.filter { it.mime.startsWith("text/") }
+                    .joinToString("") { "\n\n[Archivo: ${it.name}]\n${it.data}" }
+                message.copy(
+                    content = message.content + inlined,
+                    attachments = message.attachments.filterNot { it.mime.startsWith("text/") }
+                )
             } else {
                 message
             }
