@@ -70,7 +70,7 @@ private fun AppRoot() {
         )
         is Screen.ProviderDetail -> ProviderDetailScreen(
             viewModel = viewModel,
-            presetId = current.presetId,
+            providerId = current.presetId,
             onBack = { screen = Screen.Providers }
         )
     }
