@@ -9,7 +9,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.lazy.item
 import androidx.compose.material3.Button
 import github.franco.chat.ai.data.Chat
 import androidx.compose.foundation.horizontalScroll
