@@ -17,7 +17,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -82,84 +81,88 @@ fun CustomProviderScreen(
                 .verticalScroll(rememberScrollState())
                 .imePadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("Nombre", style = MaterialTheme.typography.labelLarge)
-            OutlinedTextField(
-                value = label,
-                onValueChange = { label = it },
-                placeholder = { Text("Mi servidor") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            Text("URL base", style = MaterialTheme.typography.labelLarge)
-            OutlinedTextField(
-                value = baseUrl,
-                onValueChange = { baseUrl = it },
-                placeholder = { Text(suggestedUrl) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            )
-            TextButton(onClick = { baseUrl = suggestedUrl }) {
-                Text("Usar la URL sugerida para este tipo")
+            SectionLabel("Identidad")
+            SectionCard {
+                OutlinedTextField(
+                    value = label,
+                    onValueChange = { label = it },
+                    label = { Text("Nombre") },
+                    placeholder = { Text("Mi servidor") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                OutlinedTextField(
+                    value = baseUrl,
+                    onValueChange = { baseUrl = it },
+                    label = { Text("URL base") },
+                    placeholder = { Text(suggestedUrl) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                TextButton(onClick = { baseUrl = suggestedUrl }) {
+                    Text("Usar la URL sugerida para este tipo")
+                }
             }
 
-            HorizontalDivider()
-
-            Text("Tipo de API", style = MaterialTheme.typography.labelLarge)
-            Text(
-                text = "Elige como habla ese servidor. La app siempre usa el formato de chat compatible.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                ApiTypes.all.forEach { tipo ->
-                    val id = tipo.first
-                    val legible = tipo.second
-                    FilterChip(
-                        selected = apiType == id,
-                        onClick = { apiType = id },
-                        label = { Text(legible) },
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    if (apiType == id) {
-                        Text(
-                            text = tipo.third,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 4.dp)
+            SectionLabel("Tipo de API")
+            SectionCard {
+                Text(
+                    text = "Elige cómo habla ese servidor. La app siempre usa el formato de chat compatible.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ApiTypes.all.forEach { tipo ->
+                        val id = tipo.first
+                        FilterChip(
+                            selected = apiType == id,
+                            onClick = { apiType = id },
+                            label = { Text(tipo.second) },
+                            shape = RoundedCornerShape(12.dp)
                         )
+                        if (apiType == id) {
+                            Text(
+                                text = tipo.third,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        }
                     }
                 }
             }
 
-            HorizontalDivider()
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Este proveedor necesita API key", style = MaterialTheme.typography.bodyMedium)
-                Switch(checked = requiresKey, onCheckedChange = { requiresKey = it })
-            }
-
-            if (requiresKey) {
-                OutlinedTextField(
-                    value = key,
-                    onValueChange = { key = it },
-                    label = { Text("API key (opcional ahora)") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            SectionLabel("Autenticación")
+            SectionCard {
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Necesita clave de API",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Switch(checked = requiresKey, onCheckedChange = { requiresKey = it })
+                }
+                if (requiresKey) {
+                    OutlinedTextField(
+                        value = key,
+                        onValueChange = { key = it },
+                        label = { Text("API key (opcional ahora)") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
             }
 
             Button(
@@ -173,7 +176,6 @@ fun CustomProviderScreen(
                     )
                     onCreated()
                 },
-                enabled = baseUrl.isNotBlank() || baseUrl.isBlank(),
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
             ) {
@@ -181,10 +183,10 @@ fun CustomProviderScreen(
             }
 
             Text(
-                text = "Se creara activo y con la lista de modelos vacia. Abre su ficha para cargar los modelos.",
+                text = "Se creará activo y con la lista de modelos vacía. Abre su ficha para cargar los modelos.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 16.dp)
+                modifier = Modifier.padding(bottom = 24.dp)
             )
         }
     }
