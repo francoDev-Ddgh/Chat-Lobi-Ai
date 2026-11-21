@@ -173,12 +173,14 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 },
+                                navigationIcon = {
+                                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                        Icon(Icons.Filled.Menu, contentDescription = "Historial de chats")
+                                    }
+                                },
                                 actions = {
                                     IconButton(onClick = { showChatConfig = true }) {
                                         Icon(Icons.Filled.Build, contentDescription = "Ajustes del chat")
-                                    }
-                                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                        Icon(Icons.Filled.Menu, contentDescription = "Historial de chats")
                                     }
                                 },
                                 colors = TopAppBarDefaults.topAppBarColors(
