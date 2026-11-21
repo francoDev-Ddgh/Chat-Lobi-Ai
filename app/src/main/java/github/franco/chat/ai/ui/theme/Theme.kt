@@ -2,7 +2,10 @@ package github.franco.chat.ai.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -67,6 +70,13 @@ private val AppTypography = Typography().let { base ->
     )
 }
 
+private val AppShapes = Shapes(
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(28.dp)
+)
+
 @Composable
 fun ChatLobiTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -75,6 +85,7 @@ fun ChatLobiTheme(
     MaterialTheme(
         colorScheme = if (darkTheme) DarkScheme else LightScheme,
         typography = AppTypography,
+        shapes = AppShapes,
         content = content
     )
 }
