@@ -16,6 +16,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -230,7 +231,34 @@ class ChatClient {
                 request.messages.forEach { message ->
                     addJsonObject {
                         put("role", message.role)
-                        put("content", message.content)
+                        if (message.attachments.isEmpty()) {
+                            put("content", message.content)
+                        } else {
+                            putJsonArray("content") {
+                                if (message.content.isNotBlank()) {
+                                    addJsonObject {
+                                        put("type", "text")
+                                        put("text", message.content)
+                                    }
+                                }
+                                message.attachments.forEach { attachment ->
+                                    addJsonObject {
+                                        if (attachment.mime.startsWith("audio/")) {
+                                            put("type", "input_audio")
+                                            putJsonObject("input_audio") {
+                                                put("data", attachment.data)
+                                                put("format", audioFormat(attachment.mime))
+                                            }
+                                        } else {
+                                            put("type", "image_url")
+                                            putJsonObject("image_url") {
+                                                put("url", "data:${attachment.mime};base64,${attachment.data}")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -279,4 +307,10 @@ class ChatClient {
         is IOException -> true
         else -> false
     }
+}
+
+private fun audioFormat(mime: String): String = when {
+    mime.contains("mpeg") -> "mp3"
+    mime.contains("wav") -> "wav"
+    else -> mime.substringAfter('/')
 }
