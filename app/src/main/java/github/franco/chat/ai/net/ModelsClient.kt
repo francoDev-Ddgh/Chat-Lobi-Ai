@@ -28,7 +28,7 @@ class ModelsClient {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
-    suspend fun fetch(baseUrl: String, apiKey: String, anthropicStyle: Boolean): List<String> =
+    suspend fun fetch(baseUrl: String, apiKey: String, anthropicStyle: Boolean): ModelListing =
         withContext(Dispatchers.IO) {
             val url = baseUrl.trimEnd('/') + "/models"
 
@@ -51,13 +51,23 @@ class ModelsClient {
 
             val root = runCatching { json.parseToJsonElement(result.second) as? JsonObject }.getOrNull()
                 ?: throw IOException("Respuesta invalida")
-            val data = root["data"] as? JsonArray ?: return@withContext emptyList()
+            val data = root["data"] as? JsonArray ?: return@withContext ModelListing(emptyList(), emptyList(), emptyList())
 
-            data.mapNotNull { element ->
-                val obj = element as? JsonObject ?: return@mapNotNull null
-                val id = (obj["id"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
-                id.removePrefix("models/")
-            }.distinct().sorted()
+            val ids = mutableListOf<String>()
+            val reasoning = mutableListOf<String>()
+            val withMeta = mutableListOf<String>()
+            data.forEach { element ->
+                val obj = element as? JsonObject ?: return@forEach
+                val id = ((obj["id"] as? JsonPrimitive)?.contentOrNull ?: return@forEach).removePrefix("models/")
+                ids += id
+                val params = obj["supported_parameters"] as? JsonArray
+                if (params != null) {
+                    withMeta += id
+                    val names = params.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+                    if (names.any { it == "reasoning_effort" || it == "reasoning" }) reasoning += id
+                }
+            }
+            ModelListing(ids.distinct().sorted(), reasoning.distinct().sorted(), withMeta.distinct().sorted())
         }
 
     suspend fun ping(baseUrl: String, apiKey: String, anthropicStyle: Boolean): Long =
@@ -85,3 +95,6 @@ class ModelsClient {
             (System.nanoTime() - started) / 1_000_000
         }
 }
+
+/** Modelos del proveedor. [reasoning] = los que exponen control de razonamiento; [withMeta] = los que informaron sus parametros. */
+data class ModelListing(val ids: List<String>, val reasoning: List<String>, val withMeta: List<String>)
