@@ -4,9 +4,17 @@ import github.franco.chat.ai.net.Providers
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class Attachment(
+    val name: String,
+    val mime: String,
+    val data: String
+)
+
+@Serializable
 data class Message(
     val role: String,
-    val content: String
+    val content: String,
+    val attachments: List<Attachment> = emptyList()
 )
 
 @Serializable
