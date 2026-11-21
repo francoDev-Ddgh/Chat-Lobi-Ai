@@ -36,7 +36,8 @@ data class ProviderAccount(
     val enabled: Boolean = false,
     val custom: Boolean = false,
     val requiresKey: Boolean = true,
-    val supportsTemperature: Boolean = true
+    val supportsTemperature: Boolean = true,
+    val streaming: Boolean = true
 )
 
 @Serializable
