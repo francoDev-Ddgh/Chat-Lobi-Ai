@@ -20,7 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -268,7 +268,7 @@ private fun ReasoningSection(text: String, streaming: Boolean, tint: Color) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = if (expanded) Icons.Filled.ExpandMore else Icons.Filled.KeyboardArrowRight,
+                imageVector = if (expanded) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowRight,
                 contentDescription = null,
                 tint = tint
             )
