@@ -39,7 +39,8 @@ data class ChatRequest(
     val temperature: Double? = null,
     val omitTemperature: Boolean = false,
     val streaming: Boolean = true,
-    val apiType: String = "openai"
+    val apiType: String = "openai",
+    val reasoningEffort: String? = null
 )
 
 private class ApiException(val status: Int, message: String) : IOException(message)
@@ -270,6 +271,7 @@ class ChatClient {
             if (temp != null && !request.omitTemperature) {
                 put("temperature", JsonPrimitive(temp))
             }
+            request.reasoningEffort?.let { put("reasoning_effort", it) }
         }
 
         val builder = Request.Builder()
@@ -347,6 +349,7 @@ class ChatClient {
                 put("stream", false)
                 put("messages", JsonArray(convo))
                 if (withTools) put("tools", WebTools.specs)
+                request.reasoningEffort?.let { put("reasoning_effort", it) }
                 val temp = request.temperature
                 if (temp != null && !request.omitTemperature) put("temperature", JsonPrimitive(temp))
             }
