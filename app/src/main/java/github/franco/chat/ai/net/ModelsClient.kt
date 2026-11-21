@@ -19,6 +19,13 @@ class ModelsClient {
         .readTimeout(120, TimeUnit.SECONDS)
         .build()
 
+    // El ping no puede quedarse 15 minutos esperando: es solo una prueba.
+    private val pingHttp = OkHttpClient.Builder()
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(25, TimeUnit.SECONDS)
+        .build()
+
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     suspend fun fetch(baseUrl: String, apiKey: String, anthropicStyle: Boolean): List<String> =
@@ -37,7 +44,7 @@ class ModelsClient {
             if (result.first !in 200..299 && anthropicStyle && apiKey.isNotBlank()) {
                 result = execute {
                     it.header("x-api-key", apiKey)
-                    it.header("anthropic-version", "2026-10-21")
+                    it.header("anthropic-version", "2023-06-01")
                 }
             }
             if (result.first !in 200..299) throw IOException("HTTP ${result.first}")
@@ -51,5 +58,30 @@ class ModelsClient {
                 val id = (obj["id"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
                 id.removePrefix("models/")
             }.distinct().sorted()
+        }
+
+    suspend fun ping(baseUrl: String, apiKey: String, anthropicStyle: Boolean): Long =
+        withContext(Dispatchers.IO) {
+            val url = baseUrl.trimEnd('/') + "/models"
+            val started = System.nanoTime()
+
+            fun call(build: (Request.Builder) -> Unit): Int {
+                val builder = Request.Builder().url(url).get().header("Accept", "application/json")
+                build(builder)
+                pingHttp.newCall(builder.build()).execute().use { response ->
+                    response.body?.close()
+                    return response.code
+                }
+            }
+
+            var code = call { it.header("Authorization", "Bearer $apiKey") }
+            if (code !in 200..299 && anthropicStyle && apiKey.isNotBlank()) {
+                code = call {
+                    it.header("x-api-key", apiKey)
+                    it.header("anthropic-version", "2023-06-01")
+                }
+            }
+            if (code !in 200..299) throw IOException("HTTP $code")
+            (System.nanoTime() - started) / 1_000_000
         }
 }
