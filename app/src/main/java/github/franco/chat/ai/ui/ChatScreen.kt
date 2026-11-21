@@ -736,7 +736,7 @@ private fun HistoryDrawer(
 
         Spacer(Modifier.height(12.dp))
         DrawerLink(
-            icon = Icons.Filled.Star,
+            icon = Icons.Filled.Edit,
             label = "Custom Chats",
             onClick = { Toast.makeText(context, "Próximamente", Toast.LENGTH_SHORT).show() }
         )
