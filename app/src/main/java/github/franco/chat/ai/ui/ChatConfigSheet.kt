@@ -31,13 +31,14 @@ import androidx.compose.ui.unit.dp
 import github.franco.chat.ai.ModelOption
 import github.franco.chat.ai.data.Chat
 import github.franco.chat.ai.data.ChatConfig
-import github.franco.chat.ai.net.Providers
+import github.franco.chat.ai.data.ProviderAccount
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ChatConfigSheet(
     chat: Chat,
     options: List<ModelOption>,
+    accounts: List<ProviderAccount>,
     onDismiss: () -> Unit,
     onSave: (ChatConfig) -> Unit
 ) {
@@ -49,7 +50,7 @@ fun ChatConfigSheet(
         providerIds.isNotEmpty() -> providerIds.first()
         else -> ""
     }
-    val preset = if (selectedProvider.isNotBlank()) Providers.byId(selectedProvider) else null
+    val account = accounts.firstOrNull { it.id == selectedProvider }
     val models = remember(options, selectedProvider) {
         options.filter { it.providerId == selectedProvider }.map { it.model }
     }
@@ -84,10 +85,11 @@ fun ChatConfigSheet(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     providerIds.forEach { id ->
+                        val name = accounts.firstOrNull { it.id == id }?.label ?: id
                         FilterChip(
                             selected = id == selectedProvider,
                             onClick = { config = config.copy(providerId = id, model = "") },
-                            label = { Text(Providers.byId(id).label) },
+                            label = { Text(name) },
                             shape = RoundedCornerShape(12.dp)
                         )
                     }
@@ -119,7 +121,8 @@ fun ChatConfigSheet(
 
             HorizontalDivider()
 
-            if (preset == null || preset.supportsTemperature) {
+            val supportsTemperature = account?.supportsTemperature ?: true
+            if (supportsTemperature) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
