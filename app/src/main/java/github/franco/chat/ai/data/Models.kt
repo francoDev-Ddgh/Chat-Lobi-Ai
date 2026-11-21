@@ -45,7 +45,9 @@ data class ProviderAccount(
     val custom: Boolean = false,
     val requiresKey: Boolean = true,
     val supportsTemperature: Boolean = true,
-    val streaming: Boolean = true
+    val streaming: Boolean = true,
+    val reasoningModels: List<String> = emptyList(),
+    val metaModels: List<String> = emptyList()
 )
 
 @Serializable
