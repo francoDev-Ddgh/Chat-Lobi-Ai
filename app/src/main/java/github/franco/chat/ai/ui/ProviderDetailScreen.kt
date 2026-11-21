@@ -1,11 +1,12 @@
 package github.franco.chat.ai.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -18,16 +19,17 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -93,216 +95,247 @@ fun ProviderDetailScreen(
                 .verticalScroll(rememberScrollState())
                 .imePadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            if (account.custom) {
-                Text("Nombre", style = MaterialTheme.typography.labelLarge)
+            SectionLabel("Conexión")
+            SectionCard {
+                if (account.custom) {
+                    OutlinedTextField(
+                        value = label,
+                        onValueChange = { label = it },
+                        label = { Text("Nombre") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
                 OutlinedTextField(
-                    value = label,
-                    onValueChange = { label = it },
+                    value = baseUrl,
+                    onValueChange = { baseUrl = it },
+                    label = { Text("URL base") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
+                Text(
+                    text = "Tipo de API",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ApiTypes.all.forEach { tipo ->
+                        FilterChip(
+                            selected = apiType == tipo.first,
+                            onClick = { apiType = tipo.first },
+                            label = { Text(tipo.second) },
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        if (apiType == tipo.first) {
+                            Text(
+                                text = tipo.third,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        }
+                    }
+                }
+                Button(
+                    onClick = { viewModel.saveAccountSettings(providerId, label, baseUrl, apiType) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Guardar cambios") }
+                OutlinedButton(
+                    onClick = { viewModel.testConnection(providerId) },
+                    enabled = !state.pingBusy,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    if (state.pingBusy) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.padding(end = 8.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                    Text(if (state.pingBusy) "Probando…" else "Probar conexión")
+                }
+                state.pingResult?.let { result ->
+                    Text(
+                        text = result,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (result.startsWith("OK")) MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.error
+                    )
+                }
             }
 
-            Text("Tipo de API", style = MaterialTheme.typography.labelLarge)
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                ApiTypes.all.forEach { tipo ->
-                    FilterChip(
-                        selected = apiType == tipo.first,
-                        onClick = { apiType = tipo.first },
-                        label = { Text(tipo.second) },
+            if (account.requiresKey) {
+                SectionLabel("Clave de API")
+                SectionCard {
+                    OutlinedTextField(
+                        value = key,
+                        onValueChange = { key = it },
+                        label = { Text("API key") },
+                        placeholder = {
+                            Text(if (hasKey) "Guardada. Escribe otra para reemplazarla" else "Pega la clave")
+                        },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
                     )
-                    if (apiType == tipo.first) {
-                        Text(
-                            text = tipo.third,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 4.dp)
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                viewModel.saveApiKey(providerId, key)
+                                key = ""
+                            },
+                            enabled = key.isNotBlank(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) { Text("Guardar clave") }
+                        if (hasKey) {
+                            TextButton(onClick = { viewModel.saveApiKey(providerId, "") }) {
+                                Text("Borrar clave")
+                            }
+                        }
                     }
                 }
             }
 
-            OutlinedTextField(
-                value = baseUrl,
-                onValueChange = { baseUrl = it },
-                label = { Text("URL base") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            Button(
-                onClick = { viewModel.saveAccountSettings(providerId, label, baseUrl, apiType) },
-                shape = RoundedCornerShape(12.dp)
-            ) { Text("Guardar datos del proveedor") }
-
-            HorizontalDivider()
-
-            Row2 {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Streaming", style = MaterialTheme.typography.labelLarge)
+            SectionLabel("Modelos")
+            SectionCard {
+                OutlinedButton(
+                    onClick = { viewModel.refreshModels(providerId) },
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    if (state.busy) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.padding(end = 8.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                    Text("Cargar modelos del proveedor")
+                }
+                if (account.models.isEmpty()) {
                     Text(
-                        text = "Activado por defecto. Desactívalo si el proveedor corta la conexión a mitad de respuesta.",
+                        text = "Todavía no hay modelos. Carga la lista o agrega uno manualmente.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        account.models.forEach { model ->
+                            FilterChip(
+                                selected = false,
+                                onClick = { viewModel.toggleModel(providerId, model) },
+                                label = { Text(model) },
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Toca un modelo para quitarlo.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Switch(
-                    checked = account.streaming,
-                    onCheckedChange = { viewModel.setStreaming(providerId, it) }
-                )
-            }
-
-            OutlinedButton(
-                onClick = { viewModel.testConnection(providerId) },
-                enabled = !state.pingBusy,
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                if (state.pingBusy) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.padding(end = 8.dp),
-                        strokeWidth = 2.dp
-                    )
-                }
-                Text(if (state.pingBusy) "Probando..." else "Probar conexión (ping)")
-            }
-            state.pingResult?.let { result ->
-                Text(
-                    text = result,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (result.startsWith("OK")) MaterialTheme.colorScheme.onSurfaceVariant
-                    else MaterialTheme.colorScheme.error
-                )
-            }
-
-            HorizontalDivider()
-
-            if (account.requiresKey) {
-                OutlinedTextField(
-                    value = key,
-                    onValueChange = { key = it },
-                    label = { Text("API key") },
-                    placeholder = { Text(if (hasKey) "Guardada - escribe otra para reemplazar" else "Pega la key") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                Row2 {
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = manualModel,
+                        onValueChange = { manualModel = it },
+                        label = { Text("Agregar modelo manual") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
                     Button(
                         onClick = {
-                            viewModel.saveApiKey(providerId, key)
-                            key = ""
+                            if (manualModel.isNotBlank()) {
+                                viewModel.toggleModel(providerId, manualModel.trim())
+                                manualModel = ""
+                            }
                         },
-                        enabled = key.isNotBlank(),
+                        enabled = manualModel.isNotBlank(),
                         shape = RoundedCornerShape(12.dp)
-                    ) { Text("Guardar key") }
-                    if (hasKey) {
-                        TextButton(onClick = { viewModel.saveApiKey(providerId, "") }) {
-                            Text("Borrar key")
-                        }
-                    }
+                    ) { Text("Añadir") }
                 }
             }
 
-            HorizontalDivider()
-
-            Text("Modelos", style = MaterialTheme.typography.labelLarge)
-            OutlinedButton(
-                onClick = { viewModel.refreshModels(providerId) },
-                enabled = !state.busy,
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                if (state.busy) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.padding(end = 8.dp),
-                        strokeWidth = 2.dp
-                    )
-                }
-                Text("Cargar modelos del proveedor")
-            }
-
-            if (account.models.isEmpty()) {
-                Text(
-                    text = "Aun no hay modelos. Carga la lista o agrega uno manualmente.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+            SectionLabel("Comportamiento")
+            SectionCard {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    account.models.forEach { model ->
-                        FilterChip(
-                            selected = false,
-                            onClick = { viewModel.toggleModel(providerId, model) },
-                            label = { Text(model) },
-                            shape = RoundedCornerShape(12.dp)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Streaming",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Activado por defecto. Desactívalo si el proveedor corta la respuesta a mitad.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    Switch(
+                        checked = account.streaming,
+                        onCheckedChange = { viewModel.setStreaming(providerId, it) }
+                    )
                 }
-                Text(
-                    text = "Toca un modelo para quitarlo.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Row2 {
-                OutlinedTextField(
-                    value = manualModel,
-                    onValueChange = { manualModel = it },
-                    label = { Text("Agregar modelo manual") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                Button(
-                    onClick = {
-                        if (manualModel.isNotBlank()) {
-                            viewModel.toggleModel(providerId, manualModel.trim())
-                            manualModel = ""
-                        }
-                    },
-                    enabled = manualModel.isNotBlank(),
-                    shape = RoundedCornerShape(12.dp)
-                ) { Text("Anadir") }
             }
 
             if (account.custom) {
-                HorizontalDivider()
-                OutlinedButton(
+                TextButton(
                     onClick = {
                         viewModel.deleteProvider(providerId)
                         onBack()
                     },
-                    shape = RoundedCornerShape(12.dp)
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
                 ) { Text("Eliminar proveedor personalizado") }
             }
 
             Text(
-                text = "Los cambios de nombre, URL y tipo se guardan con el boton. Los modelos y el streaming se guardan al instante.",
+                text = "Los cambios de nombre, URL y tipo se guardan con el botón. Los modelos y el streaming se guardan al instante.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 16.dp)
+                modifier = Modifier.padding(bottom = 24.dp)
             )
         }
     }
 }
 
+/** Tarjeta de seccion compartida por las pantallas de proveedor. */
 @Composable
-private fun Row2(content: @Composable RowScope.() -> Unit) {
-    Row(
+internal fun SectionCard(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content
-    )
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            content = content
+        )
+    }
 }
