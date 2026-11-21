@@ -159,10 +159,6 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
                             scope.launch { drawerState.close() }
                         },
                         onDelete = { id -> viewModel.deleteChat(id) },
-                        onOpenChatConfig = {
-                            scope.launch { drawerState.close() }
-                            showChatConfig = true
-                        },
                         onOpenSettings = {
                             scope.launch { drawerState.close() }
                             onOpenSettings()
@@ -718,9 +714,9 @@ private fun HistoryDrawer(
     onNewChat: () -> Unit,
     onSelect: (String) -> Unit,
     onDelete: (String) -> Unit,
-    onOpenChatConfig: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
+    val context = LocalContext.current
     var query by remember { mutableStateOf("") }
     val now = System.currentTimeMillis()
     val chats = remember(state.chats, query) {
@@ -729,12 +725,6 @@ private fun HistoryDrawer(
             .sortedByDescending { it.updatedAt }
     }
     val groups = remember(chats, now) { chats.groupBy { groupLabel(now - it.updatedAt) } }
-    val customChats = remember(state.chats) {
-        state.chats
-            .filter { it.config.systemPrompt.isNotBlank() || it.config.temperature != null }
-            .sortedByDescending { it.updatedAt }
-            .take(3)
-    }
 
     Column(modifier = Modifier.fillMaxSize().padding(vertical = 16.dp)) {
         Text(
@@ -744,35 +734,16 @@ private fun HistoryDrawer(
             modifier = Modifier.padding(horizontal = 20.dp)
         )
 
-        Spacer(Modifier.height(16.dp))
-        DrawerSectionLabel("Chats personalizados")
-        if (customChats.isEmpty()) {
-            Text(
-                text = "Cambia el prompt de sistema o la temperatura de un chat y aparecerá aquí.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
-            )
-        } else {
-            customChats.forEach { chat ->
-                Box(modifier = Modifier.padding(horizontal = 12.dp)) {
-                    ChatRow(
-                        chat = chat,
-                        selected = chat.id == state.current?.id,
-                        fallbackModel = state.settings.lastModel,
-                        onSelect = onSelect,
-                        onDelete = onDelete
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-        DrawerSectionLabel("Personalización")
+        Spacer(Modifier.height(12.dp))
+        DrawerLink(
+            icon = Icons.Filled.Star,
+            label = "Custom Chats",
+            onClick = { Toast.makeText(context, "Próximamente", Toast.LENGTH_SHORT).show() }
+        )
         DrawerLink(
             icon = Icons.Filled.Build,
-            label = "Ajustes de este chat",
-            onClick = onOpenChatConfig
+            label = "Customizations",
+            onClick = { Toast.makeText(context, "Próximamente", Toast.LENGTH_SHORT).show() }
         )
 
         Spacer(Modifier.height(12.dp))
@@ -804,6 +775,7 @@ private fun HistoryDrawer(
         }
 
         Spacer(Modifier.height(8.dp))
+        DrawerSectionLabel("Historial")
 
         if (chats.isEmpty()) {
             Box(
