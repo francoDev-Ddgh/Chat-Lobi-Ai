@@ -2,6 +2,7 @@ package github.franco.chat.ai.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
@@ -42,6 +45,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
@@ -66,6 +70,7 @@ import github.franco.chat.ai.ModelOption
 import github.franco.chat.ai.UiState
 import github.franco.chat.ai.data.Chat
 import github.franco.chat.ai.data.Message
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,13 +83,28 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
 
     var input by rememberSaveable { mutableStateOf("") }
     var showChatConfig by remember { mutableStateOf(false) }
-
-    val messageCount = state.current?.messages?.size ?: 0
-    LaunchedEffect(messageCount) {
-        if (messageCount > 0) listState.scrollToItem(messageCount - 1)
-    }
+    var waitSeconds by remember { mutableStateOf(0) }
 
     val chat = state.current
+    val messages = chat?.messages.orEmpty()
+    val lastContentLength = messages.lastOrNull()?.content?.length ?: 0
+
+    LaunchedEffect(state.streaming) {
+        waitSeconds = 0
+        if (state.streaming) {
+            while (true) {
+                delay(1000)
+                waitSeconds += 1
+            }
+        }
+    }
+
+    // La lista esta invertida: el indice 0 es el final. Solo seguimos si el usuario ya estaba abajo.
+    LaunchedEffect(messages.size, lastContentLength) {
+        if (messages.isNotEmpty() && listState.firstVisibleItemIndex == 0) {
+            listState.scrollToItem(0)
+        }
+    }
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         ModalNavigationDrawer(
@@ -149,42 +169,44 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
                         ComposerBar(
                             value = input,
                             onValueChange = { input = it },
-                            enabled = !state.streaming,
+                            streaming = state.streaming,
                             onSend = {
                                 val text = input
                                 input = ""
                                 viewModel.send(text)
-                            }
+                            },
+                            onStop = { viewModel.stop() }
                         )
                     }
                 ) { padding ->
                     Column(modifier = Modifier.fillMaxSize().padding(padding)) {
                         state.error?.let { error ->
-                            Surface(
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text(
-                                    text = error,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(12.dp)
-                                )
-                            }
+                            ErrorBanner(
+                                message = error,
+                                canRetry = !state.streaming && messages.any { it.role == "user" },
+                                onRetry = { viewModel.retry() },
+                                onDismiss = { viewModel.clearError() }
+                            )
                         }
 
-                        val messages = chat?.messages.orEmpty()
                         if (messages.isEmpty()) {
                             EmptyState(modifier = Modifier.fillMaxSize())
                         } else {
+                            val reversed = remember(messages) { messages.asReversed() }
                             LazyColumn(
                                 state = listState,
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                reverseLayout = true
                             ) {
-                                items(messages) { message -> MessageBubble(message) }
+                                itemsIndexed(reversed) { index, message ->
+                                    MessageBubble(
+                                        message = message,
+                                        streaming = state.streaming && index == 0 && message.role == "assistant",
+                                        waitSeconds = waitSeconds
+                                    )
+                                }
                             }
                         }
                     }
@@ -201,6 +223,46 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
             onDismiss = { showChatConfig = false },
             onSave = { config -> viewModel.updateChatConfig(config) }
         )
+    }
+}
+
+@Composable
+private fun ErrorBanner(
+    message: String,
+    canRetry: Boolean,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+            if (canRetry) {
+                TextButton(onClick = onRetry) {
+                    Text("Reintentar", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Cerrar error",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }
 
@@ -255,10 +317,9 @@ private fun ModelSelectorBar(
 }
 
 @Composable
-private fun MessageBubble(message: Message) {
+private fun MessageBubble(message: Message, streaming: Boolean, waitSeconds: Int) {
     val isUser = message.role == "user"
     val container = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-    val content = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -267,14 +328,24 @@ private fun MessageBubble(message: Message) {
         Surface(
             color = container,
             shape = RoundedCornerShape(20.dp),
-            modifier = Modifier.widthIn(max = 300.dp)
+            modifier = if (isUser) Modifier.widthIn(max = 320.dp) else Modifier.fillMaxWidth()
         ) {
-            Text(
-                text = message.content.ifEmpty { " " },
-                color = content,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-            )
+            Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                if (isUser) {
+                    Text(
+                        text = message.content,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                } else {
+                    MessageContent(
+                        raw = message.content,
+                        streaming = streaming,
+                        waitSeconds = waitSeconds,
+                        isUser = false
+                    )
+                }
+            }
         }
     }
 }
@@ -300,8 +371,9 @@ private fun EmptyState(modifier: Modifier = Modifier) {
 private fun ComposerBar(
     value: String,
     onValueChange: (String) -> Unit,
-    enabled: Boolean,
-    onSend: () -> Unit
+    streaming: Boolean,
+    onSend: () -> Unit,
+    onStop: () -> Unit
 ) {
     Surface(color = MaterialTheme.colorScheme.background) {
         Row(
@@ -318,15 +390,20 @@ private fun ComposerBar(
                 modifier = Modifier.weight(1f),
                 placeholder = { Text("Escribe un mensaje") },
                 maxLines = 5,
+                enabled = !streaming,
                 shape = RoundedCornerShape(24.dp)
             )
             Spacer(Modifier.width(8.dp))
             FilledIconButton(
-                onClick = onSend,
-                enabled = enabled && value.isNotBlank(),
+                onClick = if (streaming) onStop else onSend,
+                enabled = if (streaming) true else value.isNotBlank(),
                 modifier = Modifier.padding(bottom = 4.dp)
             ) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar")
+                if (streaming) {
+                    Icon(Icons.Filled.Close, contentDescription = "Detener")
+                } else {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar")
+                }
             }
         }
     }
