@@ -17,6 +17,7 @@ import github.franco.chat.ai.net.ChatClient
 import github.franco.chat.ai.net.ChatRequest
 import github.franco.chat.ai.net.ModelsClient
 import github.franco.chat.ai.net.Providers
+import github.franco.chat.ai.text.Reasoning
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +40,8 @@ data class UiState(
     val savedKeys: Set<String> = emptySet(),
     val streaming: Boolean = false,
     val busy: Boolean = false,
+    val pingBusy: Boolean = false,
+    val pingResult: String? = null,
     val error: String? = null
 ) {
     val accounts: List<ProviderAccount>
@@ -121,12 +124,25 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
 
     fun stop() {
         streamJob?.cancel()
+        client.cancel()
         streamJob = null
         _state.update { it.copy(streaming = false) }
     }
 
     fun clearError() {
         _state.update { it.copy(error = null) }
+    }
+
+    fun retry() {
+        val snapshot = _state.value
+        if (snapshot.streaming) return
+        val chat = snapshot.current ?: return
+        val userIndex = chat.messages.indexOfLast { it.role == "user" }
+        if (userIndex < 0) return
+        val text = chat.messages[userIndex].content
+        val trimmed = chat.copy(messages = chat.messages.take(userIndex))
+        _state.update { it.copy(current = trimmed, error = null, pingResult = null) }
+        send(text)
     }
 
     fun selectModel(option: ModelOption) {
@@ -165,6 +181,13 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
         viewModelScope.launch {
             val account = repository.account(id) ?: return@launch
             repository.updateAccount(account.copy(enabled = enabled))
+        }
+    }
+
+    fun setStreaming(id: String, enabled: Boolean) {
+        viewModelScope.launch {
+            val account = repository.account(id) ?: return@launch
+            repository.updateAccount(account.copy(streaming = enabled))
         }
     }
 
@@ -252,6 +275,30 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
         }
     }
 
+    fun testConnection(id: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(pingBusy = true, pingResult = null) }
+            val account = repository.account(id)
+            if (account == null) {
+                _state.update { it.copy(pingBusy = false, pingResult = "Proveedor no encontrado") }
+                return@launch
+            }
+            val key = repository.apiKey(id).orEmpty()
+            val result = runCatching {
+                modelsClient.ping(account.baseUrl, key, account.apiType == ApiTypes.ANTHROPIC)
+            }
+            _state.update {
+                it.copy(
+                    pingBusy = false,
+                    pingResult = result.fold(
+                        onSuccess = { ms -> "OK - respuesta en $ms ms" },
+                        onFailure = { e -> "Sin conexion: ${e.message ?: "error"}" }
+                    )
+                )
+            }
+        }
+    }
+
     fun saveApiKey(id: String, raw: String) {
         viewModelScope.launch {
             repository.saveApiKey(id, raw)
@@ -287,7 +334,11 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
             title = title,
             updatedAt = System.currentTimeMillis()
         )
-        val history = withUser.messages
+        // Al reenviar el historial quitamos el razonamiento: es ruido y gasta tokens.
+        val history = withUser.messages.map { message ->
+            if (message.role == "assistant") message.copy(content = Reasoning.bodyOnly(message.content))
+            else message
+        }
         val assistantIndex = history.size
 
         _state.update {
@@ -316,7 +367,9 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
                         messages = history,
                         system = withUser.config.systemPrompt,
                         temperature = withUser.config.temperature,
-                        omitTemperature = !account.supportsTemperature
+                        omitTemperature = !account.supportsTemperature,
+                        streaming = account.streaming,
+                        apiType = account.apiType
                     )
                 ).collect { delta ->
                     accumulated.append(delta)
