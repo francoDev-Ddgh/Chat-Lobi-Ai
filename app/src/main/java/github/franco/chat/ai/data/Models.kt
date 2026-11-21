@@ -1,5 +1,6 @@
 package github.franco.chat.ai.data
 
+import github.franco.chat.ai.net.Providers
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -27,15 +28,20 @@ data class Chat(
 
 @Serializable
 data class ProviderAccount(
-    val presetId: String,
-    val baseUrl: String = "",
+    val id: String,
+    val label: String,
+    val baseUrl: String,
+    val apiType: String = "openai",
     val models: List<String> = emptyList(),
-    val enabled: Boolean = false
+    val enabled: Boolean = false,
+    val custom: Boolean = false,
+    val requiresKey: Boolean = true,
+    val supportsTemperature: Boolean = true
 )
 
 @Serializable
 data class AppSettings(
-    val accounts: List<ProviderAccount> = emptyList(),
+    val accounts: List<ProviderAccount> = Providers.all,
     val lastProviderId: String = "",
     val lastModel: String = ""
 )
