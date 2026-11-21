@@ -212,8 +212,17 @@ fun MessageContent(
     val linkColor = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
 
     Column {
+        // Si el modelo no manda texto fuera del razonamiento, mostramos el razonamiento
+        // como respuesta y evitamos que la burbuja quede vacia al plegarse.
+        val onlyReasoning = parsed.body.isBlank() && parsed.reasoning.isNotBlank()
+
         if (parsed.reasoning.isNotBlank()) {
-            ReasoningSection(parsed.reasoning, streaming = streaming, tint = muted)
+            ReasoningSection(
+                text = parsed.reasoning,
+                streaming = streaming,
+                tint = muted,
+                autoExpand = onlyReasoning
+            )
         }
 
         if (parsed.body.isNotBlank()) {
@@ -247,16 +256,27 @@ fun MessageContent(
                 style = MaterialTheme.typography.bodySmall,
                 color = muted
             )
+        } else if (onlyReasoning) {
+            Text(
+                text = "El proveedor no devolvio texto fuera del razonamiento.",
+                style = MaterialTheme.typography.labelSmall,
+                color = muted
+            )
         }
     }
 }
 
 @Composable
-private fun ReasoningSection(text: String, streaming: Boolean, tint: Color) {
-    var expanded by remember { mutableStateOf(streaming) }
+private fun ReasoningSection(
+    text: String,
+    streaming: Boolean,
+    tint: Color,
+    autoExpand: Boolean
+) {
+    var expanded by remember { mutableStateOf(autoExpand || streaming) }
 
-    LaunchedEffect(streaming) {
-        if (!streaming) expanded = false
+    LaunchedEffect(streaming, autoExpand) {
+        if (autoExpand) expanded = true else if (!streaming) expanded = false
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
