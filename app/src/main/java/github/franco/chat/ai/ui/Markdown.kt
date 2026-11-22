@@ -367,7 +367,11 @@ fun MessageContent(
         // como respuesta y evitamos que la burbuja quede vacia al plegarse.
         val onlyReasoning = parsed.body.isBlank() && parsed.reasoning.isNotBlank()
 
-        if (parsed.reasoning.isNotBlank()) {
+        // Si no hay texto fuera del razonamiento y ya termino, el modelo dejo la respuesta dentro de la etiqueta:
+        // la mostramos como respuesta normal (con formato) en vez de como bloque plegado.
+        val reasoningIsAnswer = onlyReasoning && !streaming
+
+        if (parsed.reasoning.isNotBlank() && !reasoningIsAnswer) {
             ReasoningSection(
                 text = parsed.reasoning,
                 streaming = streaming,
@@ -376,8 +380,9 @@ fun MessageContent(
             )
         }
 
-        if (parsed.body.isNotBlank()) {
-            val blocks = remember(parsed.body) { parseBlocks(parsed.body) }
+        val visible = if (reasoningIsAnswer) parsed.reasoning else parsed.body
+        if (visible.isNotBlank()) {
+            val blocks = remember(visible) { parseBlocks(visible) }
             SelectionContainer {
                 RenderBlocks(blocks, textColor, codeBg, linkColor, muted, isUser)
             }
