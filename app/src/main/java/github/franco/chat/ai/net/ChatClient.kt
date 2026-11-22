@@ -71,7 +71,8 @@ class ChatClient {
 
     companion object {
         const val SLOW_TIMEOUT_SECONDS = 900L
-        private const val MAX_RETRIES = 3
+        // Esperas entre reintentos (~30 s en total) para dar tiempo a que vuelva la red.
+        private val RETRY_DELAYS_MS = longArrayOf(1_000, 2_000, 4_000, 8_000, 15_000)
     }
 
     // Red lenta o inestable: se espera lo que haga falta para conectar y para leer.
@@ -107,10 +108,10 @@ class ChatClient {
                 throw cancelled
             } catch (error: Exception) {
                 // Solo reintentamos si no llego nada: reintentar a medias duplicaria texto.
-                val canRetry = !produced && attempt < MAX_RETRIES && isRetryable(error)
+                val canRetry = !produced && attempt < RETRY_DELAYS_MS.size && isRetryable(error)
                 if (!canRetry) throw error
+                delay(RETRY_DELAYS_MS[attempt])
                 attempt++
-                delay(900L * attempt)
             }
         }
     }.flowOn(Dispatchers.IO)
