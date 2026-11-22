@@ -13,16 +13,18 @@ import github.franco.chat.ai.data.ChatRepository
 import github.franco.chat.ai.data.Message
 import github.franco.chat.ai.data.ProviderAccount
 import github.franco.chat.ai.net.ApiTypes
-import github.franco.chat.ai.net.ChatClient
 import github.franco.chat.ai.net.ChatRequest
 import github.franco.chat.ai.net.ModelsClient
 import github.franco.chat.ai.net.Providers
+import github.franco.chat.ai.service.ResponseBus
+import github.franco.chat.ai.service.ResponseJob
+import github.franco.chat.ai.service.ResponseService
+import github.franco.chat.ai.service.ResponseUpdate
 import github.franco.chat.ai.text.Reasoning
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -71,15 +73,15 @@ data class UiState(
         }
 }
 
-class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
+class ChatViewModel(
+    private val appContext: Context,
+    private val repository: ChatRepository
+) : ViewModel() {
 
-    private val client = ChatClient()
     private val modelsClient = ModelsClient()
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
-
-    private var streamJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -97,6 +99,26 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
                     )
                 }
             }
+        }
+        // Las respuestas en curso viven en el servicio; aquí solo se reflejan en pantalla.
+        viewModelScope.launch {
+            ResponseBus.updates.collect { update -> update?.let(::applyUpdate) }
+        }
+    }
+
+    private fun applyUpdate(update: ResponseUpdate) {
+        _state.update { state ->
+            val chat = state.current
+            if (chat == null || chat.id != update.chatId) return@update state
+            val messages = chat.messages.toMutableList()
+            if (messages.isNotEmpty() && messages.last().role == "assistant") {
+                messages[messages.lastIndex] = messages.last().copy(content = update.text)
+            }
+            state.copy(
+                current = chat.copy(messages = messages),
+                streaming = update.streaming,
+                error = update.error
+            )
         }
     }
 
@@ -122,10 +144,10 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
         }
     }
 
+    /** Detiene la respuesta en curso (el servicio guarda lo que ya llegó). */
     fun stop() {
-        streamJob?.cancel()
-        client.cancel()
-        streamJob = null
+        if (!_state.value.streaming) return
+        ResponseService.stop(appContext)
         _state.update { it.copy(streaming = false) }
     }
 
@@ -343,7 +365,6 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
                 message
             }
         }
-        val assistantIndex = history.size
 
         _state.update {
             it.copy(
@@ -353,62 +374,53 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
             )
         }
 
-        streamJob = viewModelScope.launch {
+        viewModelScope.launch {
             val apiKey = repository.apiKey(account.id).orEmpty()
             if (account.requiresKey && apiKey.isBlank()) {
+                repository.upsertChat(withUser.copy(messages = history))
                 _state.update { it.copy(streaming = false, error = "Falta la API key de ${account.label}") }
-                persist()
                 return@launch
             }
 
-            val accumulated = StringBuilder()
-            try {
-                client.stream(
-                    ChatRequest(
-                        url = account.baseUrl.trimEnd('/') + "/chat/completions",
-                        apiKey = apiKey,
-                        model = option.model,
-                        messages = history,
-                        system = withUser.config.systemPrompt,
-                        temperature = withUser.config.temperature,
-                        omitTemperature = !account.supportsTemperature,
-                        streaming = account.streaming,
-                        apiType = account.apiType
-                    )
-                ).collect { delta ->
-                    accumulated.append(delta)
-                    updateAssistant(assistantIndex, accumulated.toString())
+            val request = ChatRequest(
+                url = account.baseUrl.trimEnd('/') + "/chat/completions",
+                apiKey = apiKey,
+                model = option.model,
+                messages = history,
+                system = withUser.config.systemPrompt,
+                temperature = withUser.config.temperature,
+                omitTemperature = !account.supportsTemperature,
+                streaming = account.streaming,
+                apiType = account.apiType
+            )
+            val job = ResponseJob(chat = withUser.copy(messages = history), request = request)
+            runCatching { ResponseService.start(appContext, job) }
+                .onFailure { e ->
+                    _state.update {
+                        it.copy(streaming = false, error = "No se pudo iniciar la respuesta: ${e.message}")
+                    }
                 }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                _state.update { it.copy(error = error.message ?: "Error desconocido") }
-            } finally {
-                _state.update { it.copy(streaming = false) }
-                persist()
-            }
         }
     }
 
-    private fun updateAssistant(index: Int, text: String) {
-        _state.update { state ->
-            val chat = state.current ?: return@update state
-            if (index !in chat.messages.indices) return@update state
-            val messages = chat.messages.toMutableList()
-            messages[index] = messages[index].copy(content = text)
-            state.copy(current = chat.copy(messages = messages, updatedAt = System.currentTimeMillis()))
-        }
-    }
-
+    /** Guarda el chat actual si no hay una respuesta en curso (el servicio guarda las respuestas). */
     private fun persist() {
-        val chat = _state.value.current ?: return
-        if (chat.messages.isEmpty()) return
-        viewModelScope.launch { repository.upsertChat(chat) }
+        val snapshot = _state.value
+        if (snapshot.streaming) return
+        val chat = snapshot.current ?: return
+        val clean = chat.copy(
+            messages = chat.messages.dropLastWhile { it.role == "assistant" && it.content.isBlank() }
+        )
+        if (clean.messages.isEmpty()) return
+        viewModelScope.launch { repository.upsertChat(clean) }
     }
 
     companion object {
         fun factory(context: Context): ViewModelProvider.Factory = viewModelFactory {
-            initializer { ChatViewModel(ChatRepository(context.applicationContext)) }
+            initializer {
+                val app = context.applicationContext
+                ChatViewModel(app, ChatRepository(app))
+            }
         }
     }
 }
